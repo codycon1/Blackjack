@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class="container">
+        <h1 class="display-3">Sign up</h1>
+    </div>
+
+    <div class="container">
+        <form method="post">
+            {% csrf_token %}
+            {% for field in form %}
+                <div class="form-group">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    <input class="form-control" id="{{ field.id_for_label }}" maxlength="30"
+                           name="{{ field.html_name }}"
+                           placeholder="{{ field.label }}" type="{{ field.field.widget.input_type }}"/>
+                    {{ field.errors }}
+                </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-pill btn-wide btn-primary my-2">Sign up</button>
+        </form>
+    </div>
+{% endblock %}
