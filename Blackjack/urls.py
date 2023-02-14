@@ -17,8 +17,10 @@ from django.contrib import admin
 from django.urls import path, include
 
 import game.urls
+import users.urls
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include(game.urls))
+    path('', include(game.urls)),
+    path('', include(users.urls)),
 ]
