@@ -7,8 +7,17 @@ rankDict = {1: 'ace', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9:
 
 
 def home(request):
-    #generate_table()
+    # generate_table()
     return render(request, 'home.html')
+
+
+def play(request):
+    return render(request, 'gametype.html')
+
+
+def singleplayer(request):
+    # TODO: Game logic and socket connections
+    return render(request, 'singleplayer.html')
 
 
 def generate_table():
