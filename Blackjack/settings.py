@@ -27,6 +27,14 @@ DEBUG = True
 ALLOWED_HOSTS = []
 
 ASGI_APPLICATION = "Blackjack.asgi.application"
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
 
 # Application definition
 
@@ -122,7 +130,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [
     BASE_DIR / "static",
-    '/var/www/static/',
+    # '/var/www/static/',
 ]
 
 # Default primary key field type

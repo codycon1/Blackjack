@@ -6,4 +6,17 @@
     </div>
 
 {#    TODO: Insert socket connection stuff here. #}
+
+<script>
+    $(document).ready(function(){
+        socket = new WebSocket('ws://127.0.0.1:8000/singleplayer');
+        socket.onopen = function(){
+            alert("Connected");
+        };
+        socket.onmessage = function(event) {
+            var data = JSON.parse(event.data);
+            alert("Message received");
+        };
+    });
+</script>
 {% endblock %}

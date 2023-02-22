@@ -1,5 +1,13 @@
 # Blackjack
 
+## Starting the local development server
+- Add modules to global python (or use a VENV)
+  - pip install -r requirements.txt
+- Start Redis server with docker
+  - docker run -p 6379:6379 -d redis:5
+- Start inbuilt django server
+  - python3 manage.py runserver
+
 ## Modules
 - Users
   - User authentication
