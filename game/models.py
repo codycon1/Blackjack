@@ -8,6 +8,7 @@ class Table(models.Model):
     tableID = models.AutoField(primary_key=True)
     pot = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.IntegerField(default=0)
+    singleplayerID = models.ForeignKey(user_model.BlackjackUser, on_delete=models.CASCADE, null=True)
 
 
 class Card(models.Model):

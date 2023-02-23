@@ -3,8 +3,13 @@
 ## Starting the local development server
 - Add modules to global python (or use a VENV)
   - pip install -r requirements.txt
-- Start Redis server with docker
-  - docker run -p 6379:6379 -d redis:5
+- Start Redis and PostgreSQL with docker
+  - docker-compose up
+- Initialize the database
+  - python3 manage.py makemigrations
+  - python3 manage.py migrate
+- Make a superuser for the django admin panel
+  - python3 manage.py createsuperuser
 - Start inbuilt django server
   - python3 manage.py runserver
 
