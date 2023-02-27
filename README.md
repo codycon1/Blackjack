@@ -40,3 +40,14 @@
 - Game rooms
 - Game logic
 - Multiplayer compatibility
+
+## Singleplayer JSON structure:
+dealercards{
+  [card(suit, rank, url)]
+}
+playercards{
+  [card(suit, rank, url)]
+}
+action{
+  int - 0: hit, 1: stay, etc
+}
