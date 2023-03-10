@@ -18,4 +18,6 @@ class Card(models.Model):
     rank = models.IntegerField()
     img = models.URLField(max_length=100)
     dealt = models.BooleanField(default=False)
+    dealer = models.BooleanField(default=False)
     tableID = models.ForeignKey(Table, on_delete=models.CASCADE)
+

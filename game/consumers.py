@@ -30,8 +30,9 @@ class SingleplayerConsumer(WebsocketConsumer):
         print("Client connected", self.room_group_name)
         self.table = sp_prep_table(self.user)
 
-        # TODO: Send the initial sync json
-
+        syncjson = sp_resync(self.table)
+        if syncjson is not None:
+            self.send(syncjson)
 
     def disconnect(self, close_code):
         async_to_sync(self.channel_layer.group_discard)(
@@ -42,3 +43,19 @@ class SingleplayerConsumer(WebsocketConsumer):
     def send_resp(self, event):
         message = event["message"]
         self.send(text_data=json.dumps(message))
+
+    def receive(self, text_data):
+        # text_data_json = json.loads(text_data) <- This is JSON conversion, maybe refactor for it
+        resp = None
+        if text_data == "reset":
+            self.table = sp_reset_table(self.user)
+            print("Resetting")
+        elif text_data == "hit":
+            resp = sp_player_draw(self.table)
+        elif text_data == "dhit":
+            resp = sp_dealer_draw(self.table)
+
+        if resp is not None:
+            self.send(text_data=resp)
+
+

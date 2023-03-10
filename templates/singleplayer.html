@@ -10,32 +10,27 @@
         <h4>Balance: </h4>
     </div>
     <div class="container bg-dark rounded">
-        <div class="row h-50">
-            <div class="col-md-3">
-                <img class="mx-auto bg-light m-2 rounded" src="{% static 'cards/4_of_spades.png' %}">
-            </div>
-            <div class="col-md-3">
-                <img class="mx-auto bg-light m-2 rounded" src="{% static 'cards/ace_of_hearts.png' %}">
-            </div>
-            <div class="col-md-1 float-end ms-auto">
+        <div class="row h-50" id="dealercards">
+            <div class="col-md-1">
                 <h4 class="text-white text-right">Dealer</h4>
             </div>
+            <div class="col-md-3">
+                <img class="mx-auto bg-light m-2 rounded" src="{% static 'cards/back.png' %}">
+            </div>
+
         </div>
-        <div class="row h-50">
-            <div class="col-md-3">
-                <img class="mx-auto bg-light m-2 rounded" src="{% static 'cards/queen_of_clubs.png' %}">
-            </div>
-            <div class="col-md-3">
-                <img class="mx-auto bg-light m-2 rounded" src="{% static 'cards/8_of_clubs.png' %}">
-            </div>
-            <div class="col-md-1 float-end ms-auto">
+        <div class="row h-50" id="playercards">
+            <div class="col-md-1">
                 <h4 class="text-white text-right">You</h4>
-                <button class="btn btn-primary btn-round my-2">Hit</button>
-                <button class="btn btn-secondary btn-round my-2">Stay</button>
+                <button class="btn btn-primary btn-round my-2" id="hit">Hit</button>
+                <button class="btn btn-secondary btn-round my-2" id="dhit">Dealer Hit</button>
+                <button class="btn btn-warning btn-round my-2" id="reset">Reset Table</button>
+            </div>
+            <div class="col-md-3">
+                <img class="mx-auto bg-light m-2 rounded" src="{% static 'cards/back.png' %}">
             </div>
         </div>
     </div>
-    {#    TODO: Insert socket connection stuff here. #}
 
     <script>
         $(document).ready(function () {
@@ -46,8 +41,36 @@
             };
             socket.onmessage = function (event) {
                 var data = JSON.parse(event.data);
-                alert("Message received");
+                if ('dealercards' in data) {
+                    for (var i = 0; i < data.dealercards.length; i++) {
+                        $('#dealercards').append(
+                            '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.dealercards[i].url + '">'
+                        );
+                    }
+                }
+                if ('playercards' in data) {
+                    for (var i = 0; i < data.playercards.length; i++) {
+                        $('#playercards').append(
+                            '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.playercards[i].url + '">'
+                        );
+                    }
+                }
             };
+
+            $('#reset').bind("click", function () {
+                socket.send("reset");
+                location.reload();
+                {#TODO: Make this more elegant#}
+                {#$('#dealercards').empty();#}
+                {#$('#playercards').empty();#}
+            });
+            $('#hit').bind("click", function () {
+                socket.send("hit");
+            });
+            $('#dhit').bind("click", function () {
+                socket.send("dhit");
+            })
         });
+
     </script>
 {% endblock %}
