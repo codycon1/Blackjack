@@ -42,17 +42,26 @@
 - Multiplayer compatibility
 
 ### Singleplayer JSON structure - Server to Client:
+- player - singleplayer serialized JSON representation of user model
 - dealercards - list of dealer's cards
 - playercards - list of player cards
 - dtotal - dealer's running total
 - ptotal - player's running total
 - readysignal - list of button IDs to display based on available user actions
 
+player{
+  int playerid
+  str username
+  int balance
+}
 dealercards{
   [card(suit, rank, url)]
 }
 playercards{
   [card(suit, rank, url)]
+}
+playerbalance{
+  int balance
 }
 dtotal{
   int dtotal
