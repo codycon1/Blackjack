@@ -81,3 +81,4 @@ def reset_deck(table):
         card.dealt = False
         card.dealer = False
         card.save()
+
