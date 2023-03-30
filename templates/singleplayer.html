@@ -25,8 +25,10 @@
                 <button class="btn btn-primary btn-round my-2" id="hit">Hit</button>
                 <button class="btn btn-primary btn-round my-2" id="stay">Stay</button>
                 <form method="post" id="bidForm">
+                    {% csrf_token %}
+                    {{ form }}
                     <input type="number" min="1" id="bidInput">
-                    <button type="submit">Bid</button>
+                    <button class="btn btn-primary btn-round my-2" type="submit">Bid</button>
                 </form>
                 <button class="btn btn-secondary btn-round my-2" id="dhit">Dealer Hit</button>
                 <button class="btn btn-warning btn-round my-2" id="reset">Reset Table</button>
