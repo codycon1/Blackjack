@@ -23,6 +23,11 @@
             <div class="col-md-1">
                 <h4 class="text-white text-right">You</h4>
                 <button class="btn btn-primary btn-round my-2" id="hit">Hit</button>
+                <button class="btn btn-primary btn-round my-2" id="stay">Stay</button>
+                <form method="post" id="bidForm">
+                    <input type="number" min="1" id="bidInput">
+                    <button type="submit">Bid</button>
+                </form>
                 <button class="btn btn-secondary btn-round my-2" id="dhit">Dealer Hit</button>
                 <button class="btn btn-warning btn-round my-2" id="reset">Reset Table</button>
             </div>
@@ -57,6 +62,12 @@
                 }
             };
 
+            const bidForm = $(document).getElementById('bidForm');
+            bidForm.addEventListener('submit', (event) => {
+                const bid = bidForm.elements['bidInput'];
+                let text = '{"betamt": bid.value}';
+            });
+
             $('#reset').bind("click", function () {
                 socket.send("reset");
                 location.reload();
@@ -65,11 +76,18 @@
                 {#$('#playercards').empty();#}
             });
             $('#hit').bind("click", function () {
-                socket.send("hit");
+                let text = '{"action":"hit"}';
+                const buttonEvent = JSON.parse(text);
+                socket.send(buttonEvent);
+            });
+            $('#stay').bind("click", function () {
+                let text = '{"action":"stay"}';
+                const buttonEvent = JSON.parse(text);
+                socket.send(buttonEvent);
             });
             $('#dhit').bind("click", function () {
                 socket.send("dhit");
-            })
+            });
         });
 
     </script>
