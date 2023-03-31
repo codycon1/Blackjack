@@ -26,6 +26,11 @@
     - Table ID (primary key)
     - Pot (decimal)
     - Status(integer)
+      - 0 - init, ready for bet and game start
+      - 1 - game start, initial bet has been placed. dealer's initial cards have been drawn
+      - 2 - Player's initial cards have been drawn. Hit / Stay
+      - 4 - Game over - win
+      - 5 - Game over - lose
   - Card model (52 entries w/same tableID => deck)
     - Card ID (primary key)
     - User ID (foreign key)

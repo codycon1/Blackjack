@@ -30,7 +30,7 @@ class SingleplayerConsumer(WebsocketConsumer):
         print("Client connected", self.room_group_name)
         self.table = sp_prep_table(self.user)
 
-        syncjson = sp_resync(self.table)
+        syncjson = sp_resync(self.table, self.user)
         if syncjson is not None:
             self.send(syncjson)
 
@@ -45,17 +45,40 @@ class SingleplayerConsumer(WebsocketConsumer):
         self.send(text_data=json.dumps(message))
 
     def receive(self, text_data):
-        # text_data_json = json.loads(text_data) <- This is JSON conversion, maybe refactor for it
+        print("Receiving", text_data)
+        rec_data = json.loads(text_data)
         resp = None
-        if text_data == "reset":
-            self.table = sp_reset_table(self.user)
-            print("Resetting")
-        elif text_data == "hit":
-            resp = sp_player_draw(self.table)
-        elif text_data == "dhit":
-            resp = sp_dealer_draw(self.table)
+        game_over = None
+
+        if 'betamt' in rec_data:
+            sp_place_bet(self.table, self.user, int(rec_data['betamt']))
+            sp_dealer_hit(self.table)
+            sp_dealer_hit(self.table)  # Initial 2x hit
+        elif 'action' in rec_data:
+            if rec_data['action'] == 'reset':
+                self.table = sp_reset_table(self.user)
+                print("resetting")
+            elif rec_data['action'] == 'Start':
+                game_over = sp_check(self.table, self.user)
+                sp_player_hit(self.table)
+                sp_player_hit(self.table)  # Initial 2x hit
+                self.table.status = 2
+                self.table.save()
+            elif rec_data['action'] == 'Hit':
+                sp_player_hit(self.table)
+                game_over = sp_check(self.table, self.user)
+            elif rec_data['action'] == 'Stay':
+                print("Staying")
+                game_over = sp_check(self.table, self.user, dealer=True)
+                sp_game_over(self.table, self.user, game_over)
+            elif rec_data['action'] == 'Again':
+                self.table = sp_reset_table(self.user)
+
+        if game_over is not None:
+            sp_game_over(self.table, self.user, game_over)
+            resp = sp_resync(self.table, self.user, dealer_flip=True)
+        else:
+            resp = sp_resync(self.table, self.user)
 
         if resp is not None:
             self.send(text_data=resp)
-
-

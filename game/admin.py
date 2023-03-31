@@ -11,4 +11,4 @@ class TableAdmin(admin.ModelAdmin):
 
 @admin.register(Card)
 class CardAdmin(admin.ModelAdmin):
-    list_display = ('cardID', 'userID', 'suit', 'rank', 'img', 'dealt')
+    list_display = ('cardID', 'userID', 'suit', 'rank', 'img', 'dealt', 'dealer')

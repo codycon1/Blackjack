@@ -4,7 +4,7 @@ from django.db import models
 
 # Create your models here.
 class BlackjackUser(AbstractUser):
-    balance = models.DecimalField(default=500, max_digits=10, decimal_places=2)
+    balance = models.IntegerField(default=500)
     REQUIRED_FIELDS = []
 
     def __str__(self):
