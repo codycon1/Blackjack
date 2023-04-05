@@ -54,28 +54,43 @@
 - ptotal - player's running total
 - readysignal - list of button IDs to display based on available user actions
 
-player{
-  int playerid
-  str username
-  int balance
+primary{
+  player{
+    int playerid
+    str username
+    int balance
+  }
+  dealercards{
+    [card(suit, rank, url)]
+  }
+  playercards{
+    [card(suit, rank, url)]
+  }
+  playerbalance{
+    int balance
+  }
+  readysignal{
+    [btn]
+  }
 }
-dealercards{
-  [card(suit, rank, url)]
-}
-playercards{
-  [card(suit, rank, url)]
-}
-playerbalance{
-  int balance
-}
-dtotal{
-  int dtotal
-}
-ptotal{
-  int ptotal
-}
-readysignal{
-  [btn]
+split{
+  player{
+    int playerid
+    str username
+    int balance
+  }
+  dealercards{
+    [card(suit, rank, url)]
+  }
+  playercards{
+    [card(suit, rank, url)]
+  }
+  playerbalance{
+    int balance
+  }
+  readysignal{
+    [btn]
+  }
 }
 
 Note: Any of these may be Null, structure will always be sent in this format
@@ -83,4 +98,13 @@ Note: Any of these may be Null, structure will always be sent in this format
 ## Singleplayer JSON structure - Client to Server:
 - action - button id for player's action
 - betamt - bet amount (optional - only for initial bet)
+
+primary{
+  action{}
+  betamt{}
+}
+split{
+  action{}
+  betamt{}
+}
 
