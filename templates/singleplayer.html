@@ -5,6 +5,9 @@
     <div class=" container justify-content-center text-center">
         <h1 class="display-3">Singleplayer</h1>
     </div>
+    <div id="endcondition">
+
+    </div>
     <div class="container justify-content-right text-right">
         <h3>Pot: <span id="pot"></span></h3>
         <h4>Balance: <span id="balance"></span></h4>
@@ -34,6 +37,17 @@
                     {#append buttons based on signals#}
                 </div>
                 <button class="btn btn-warning btn-round my-2" id="reset">Reset Table</button>
+            </div>
+        </div>
+        <div class="row h-50" id="splitcards">
+
+        </div>
+        <hr class="hr-white">
+        <div class="row">
+            <div class="col-3">
+                <div id="splitbuttondiv">
+                    {#append split buttons based on signals#}
+                </div>
             </div>
         </div>
     </div>
@@ -78,49 +92,98 @@
                         );
                     }
                 }
-                if ('playercards' in data) {
-                    for (let i = 0; i < data.playercards.length; i++) {
-                        $('#playercards').append(
-                            '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.playercards[i].url + '">'
-                        );
+                if('primary' in data) {
+                    if ('playercards' in data) {
+                        for (let i = 0; i < data.playercards.length; i++) {
+                            $('#playercards').append(
+                                '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.playercards[i].url + '">'
+                            );
+                        }
+                    }
+                    let btndiv = $('#buttondiv');
+                    if ('readysignal' in data) {
+                        for (let i = 0; i < data.readysignal.length; i++) {
+                            let signal = data.readysignal[i];
+                            if (signal === "Bet") {
+                                btndiv.append(
+                                    `
+                                    <form id="betform">
+                                    <input type="number" min="1" max="${data['balance']}" class="form-control" name="betamt" id="betamt">
+                                    <button class="btn btn-primary btn-round m-2" id="bet">Bet</button>
+                                    </form>
+                                    `
+                                );
+                                $('#betform').submit(function (e) {
+                                    response['betamt'] = $('#betamt').val();
+                                    e.preventDefault();
+                                    console.log(response);
+                                    sendresp(response);
+                                });
+                            } else {
+                                btndiv.append(
+                                    `<button class="btn btn-primary btn-round m-2" id="${signal}">${signal}</button>`
+                                );
+                                $('#' + signal).bind('click', function () {
+                                    response['action'] = signal;
+                                    sendresp(response);
+                                });
+                            }
+                        }
                     }
                 }
-                let btndiv = $('#buttondiv');
-                if ('readysignal' in data) {
-                    for (let i = 0; i < data.readysignal.length; i++) {
-                        let signal = data.readysignal[i];
-                        if (signal === "Bet") {
-                            btndiv.append(
-                                `
-                                <form id="betform">
-                                <input type="number" min="1" max="${data['balance']}" class="form-control" name="betamt" id="betamt">
-                                <button class="btn btn-primary btn-round m-2" id="bet">Bet</button>
-                                </form>
-                                `
+                if('split' in data) {
+                    if ('playercards' in data) {
+                        for (let i = 0; i < data.playercards.length; i++) {
+                            $('#splitcards').append(
+                                '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.playercards[i].url + '">'
                             );
-                            $('#betform').submit(function (e) {
-                                response['betamt'] = $('#betamt').val();
-                                e.preventDefault();
-                                console.log(response);
-                                sendresp(response);
-                            });
-                        } else {
-                            btndiv.append(
-                                `<button class="btn btn-primary btn-round m-2" id="${signal}">${signal}</button>`
-                            );
-                            $('#' + signal).bind('click', function () {
-                                response['action'] = signal;
-                                sendresp(response);
-                            });
+                        }
+                    }
+                    let btndiv = $('#splitbuttondiv');
+                    if ('readysignal' in data) {
+                        for (let i = 0; i < data.readysignal.length; i++) {
+                            let signal = data.readysignal[i];
+                            if (signal === "Bet") {
+                                btndiv.append(
+                                    `
+                                    <form id="splitbetform">
+                                    <input type="number" min="1" max="${data['balance']}" class="form-control" name="betamt" id="splitbetamt">
+                                    <button class="btn btn-primary btn-round m-2" id="splitbet">Bet</button>
+                                    </form>
+                                    `
+                                );
+                                $('#splitbetform').submit(function (e) {
+                                    response['betamt'] = $('#splitbetamt').val();
+                                    e.preventDefault();
+                                    console.log(response);
+                                    sendresp(response);
+                                });
+                            } else {
+                                btndiv.append(
+                                    `<button class="btn btn-primary btn-round m-2" id="${signal}">${signal}</button>`
+                                );
+                                $('#' + signal).bind('click', function () {
+                                    response['action'] = signal;
+                                    sendresp(response);
+                                });
+                            }
                         }
                     }
                 }
                 if('result' in data) {
+                #Rework for delay to display all cards before end state
+                let endcon = $('#endcondition');
                     if(data['result']){
                         alert("YOU WON");
+                        endcon.append(
+                            `<h4>YOU WON</h4>`
+                        );
                     }
                     else{
                         alert("YOU LOST");
+                        endcon.append(
+                            `<h4>YOU LOST</h4>`
+                        );
                     }
                 }
             };
