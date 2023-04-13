@@ -20,6 +20,8 @@ def sp_process_input_json(data, user, table):
     action_primary = None
     action_split = None
 
+    player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
+
     try:
         action_primary = data['primary']['action']
         action_split = data['split']['action']
@@ -29,16 +31,31 @@ def sp_process_input_json(data, user, table):
 
     if action_primary == 'reset':
         print("Resetting table")
-        sp_reset_table(table)
+        sp_reset_table(table, user)
+    if action_primary.split(' ')[0] == 'bet':
+        bet_amount = int(action_primary.split(' ')[1])
+        bet_instance = models.Bet.objects.filter(playerID=user, tableID=table).first()
+        if not bet_instance:
+            bet_instance = models.Bet(playerID=user, tableID=table)
+        bet_instance.amount += bet_amount
+        bet_instance.save()
+        user.balance -= bet_amount
+        player_tracker.status = STATUS_BET_PLACED
+        player_tracker.save()
+        user.save()
 
 
-def sp_sync(table, user):
+    if action_primary == 'hit':
+        pass
+
+    return sp_sync(table, user)
+
+
+def sp_sync(table, user, init=False):
     player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
     if not player_tracker:
         player_tracker = models.PlayerTracker(playerID=user, tableID=table)
-    if cache := player_tracker.json_cache:
-        json_string = json.dumps(cache)
-        return json_string
+        player_tracker.save()
 
     cards = models.Card.objects.filter(tableID=table, dealt=True)
     bets = models.Bet.objects.filter(tableID=table)
@@ -59,8 +76,8 @@ def sp_sync(table, user):
     }
 
     if bets:
-        if user_bet := bets.filter(playerID=user).amount:
-            json_obj['primary']['bet'] = user_bet
+        if user_bet := bets.filter(playerID=user).first():
+            json_obj['primary']['bet'] = user_bet.amount
         if user_bet.amount_split:
             json_obj['split']['bet'] = user_bet.amount_split
     if playercards := cards.filter(playerID=user):
@@ -72,9 +89,9 @@ def sp_sync(table, user):
     if dealercards := cards.filter(dealer=True):
         for i, card in enumerate(dealercards):
             if card.hidden:
-                json_obj['dealercards'].append({"url": (STATIC_URL + 'back.png')})
+                json_obj['dealer_cards'].append({"url": (STATIC_URL + 'back.png')})
             else:
-                json_obj['dealercards'].append({"url": (STATIC_URL + card.img)})
+                json_obj['dealer_cards'].append({"url": (STATIC_URL + card.img)})
 
     primary_action, split_action = sp_get_ready_signal(player_tracker)
     json_obj['primary']['signal'].extend(primary_action)
@@ -238,14 +255,15 @@ def sp_prep_table(user):
     return table
 
 
-def sp_reset_table(table):
-    if table is None:
-        table = generate_table(user)
-    else:
-        reset_deck(table)
-        table.status = 0
-        table.pot = 0
-        table.save()
+def sp_reset_table(table, user):
+    table.delete()
+    table.save()
+    table = generate_table(user)
+
+    bet_instance = models.Bet.objects.filter(playerID=user, tableID=table)
+    if bet_instance:
+        bet_instance.delete()
+        bet_instance.save()
     return table
 
 
