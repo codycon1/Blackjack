@@ -10,6 +10,8 @@ suitDict = {0: 'diamonds', 1: 'hearts', 2: 'spades', 3: 'clubs'}
 rankDict = {1: 'ace', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9',
             10: '10', 11: 'jack', 12: 'queen', 13: 'king'}
 
+def split(user):
+    pass
 
 def sp_game_over(table, user, result, win21=False):
     if result:  # Win condition

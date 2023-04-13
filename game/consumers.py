@@ -8,6 +8,7 @@ from game import models
 from game import utility
 from game.utility import *
 
+#PREPARE FOR REWRITE
 
 class SingleplayerConsumer(WebsocketConsumer):
 
@@ -73,6 +74,8 @@ class SingleplayerConsumer(WebsocketConsumer):
                 sp_game_over(self.table, self.user, game_over)
             elif rec_data['action'] == 'Again':
                 self.table = sp_reset_table(self.user)
+            elif rec_data['action'] == 'Split':
+                split(self.user)
 
         if game_over is not None:
             sp_game_over(self.table, self.user, game_over)
