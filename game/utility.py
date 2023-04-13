@@ -10,13 +10,113 @@ suitDict = {0: 'diamonds', 1: 'hearts', 2: 'spades', 3: 'clubs'}
 rankDict = {1: 'ace', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9',
             10: '10', 11: 'jack', 12: 'queen', 13: 'king'}
 
-def split(user):
-    pass
+STATUS_INIT = 0
+STATUS_BET_PLACED = 1
+STATUS_TURN = 2
+STATUS_SPLIT = 3
+
+
+def sp_process_input_json(data, user, table):
+    action_primary = None
+    action_split = None
+
+    try:
+        action_primary = data['primary']['action']
+        action_split = data['split']['action']
+    except KeyError:
+        # Screw it, just ignore a key error it's easier this way
+        pass
+
+    if action_primary == 'reset':
+        print("Resetting table")
+        sp_reset_table(table)
+
+
+def sp_sync(table, user):
+    player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
+    if not player_tracker:
+        player_tracker = models.PlayerTracker(playerID=user, tableID=table)
+    if cache := player_tracker.json_cache:
+        json_string = json.dumps(cache)
+        return json_string
+
+    cards = models.Card.objects.filter(tableID=table, dealt=True)
+    bets = models.Bet.objects.filter(tableID=table)
+
+    json_obj = {
+        'balance': user.balance,
+        'dealer_cards': [],
+        'primary': {
+            'bet': [],
+            'cards': [],
+            'signal': [],
+        },
+        'split': {
+            'bet': [],
+            'cards': [],
+            'signal': [],
+        },
+    }
+
+    if bets:
+        if user_bet := bets.filter(playerID=user).amount:
+            json_obj['primary']['bet'] = user_bet
+        if user_bet.amount_split:
+            json_obj['split']['bet'] = user_bet.amount_split
+    if playercards := cards.filter(playerID=user):
+        for i, card in enumerate(playercards):
+            if not card.split:
+                json_obj['primary']['cards'].append({"url": (STATIC_URL + card.img)})
+            else:
+                json_obj['split']['cards'].append({"url": (STATIC_URL + card.img)})
+    if dealercards := cards.filter(dealer=True):
+        for i, card in enumerate(dealercards):
+            if card.hidden:
+                json_obj['dealercards'].append({"url": (STATIC_URL + 'back.png')})
+            else:
+                json_obj['dealercards'].append({"url": (STATIC_URL + card.img)})
+
+    primary_action, split_action = sp_get_ready_signal(player_tracker)
+    json_obj['primary']['signal'].extend(primary_action)
+    if split_action is not None:
+        json_obj['split']['signal'].extend(split_action)
+
+    player_tracker.json_cache = json_obj
+    player_tracker.save()
+
+    json_string = json.dumps(json_obj)
+    print(json_string)
+    return json_string
+
+
+def sp_get_ready_signal(player_tracker):
+    primary_signal = []
+    split_signal = None
+    if player_tracker.status == STATUS_INIT:
+        primary_signal.append('Bet')
+    elif player_tracker.status == STATUS_BET_PLACED:
+        primary_signal.append('Hit')
+        primary_signal.append('Stay')
+
+    if player_tracker.split_status is not None:
+        split_signal = []
+        if player_tracker.split_status == STATUS_INIT:
+            split_signal.append('Bet')
+        elif player_tracker.status == STATUS_BET_PLACED:
+            split_signal.append('Hit')
+            split_signal.append('Stay')
+    else:
+        player_cards = models.Card.objects.filter(playerID=player_tracker.playerID, tableID=player_tracker.tableID)
+        duplicate_ranks = player_cards.values('rank')
+        # TODO: finish checking for duplicate and add split option if there are any
+
+    return primary_signal, split_signal
+
 
 def sp_game_over(table, user, result, win21=False):
     if result:  # Win condition
         if win21:
-            user.balance += int(table.pot/2)
+            user.balance += int(table.pot / 2)
         user.balance += table.pot
         table.status = 3
         table.save()
@@ -132,14 +232,13 @@ def sp_resync(table, user, dealer_flip=False):
 
 # Create a single player table if it doesn't exist, else return the existing table
 def sp_prep_table(user):
-    table = models.Table.objects.filter(singleplayerID=user).first()
+    table = models.Table.objects.filter(players__in=[user]).first()
     if table is None:
         table = generate_table(user)
     return table
 
 
-def sp_reset_table(user):
-    table = models.Table.objects.filter(singleplayerID=user).first()
+def sp_reset_table(table):
     if table is None:
         table = generate_table(user)
     else:
@@ -151,8 +250,10 @@ def sp_reset_table(user):
 
 
 # Generate a table and associated deck for either singleplayer or multiplayer
-def generate_table(user=None):
-    table_instance = models.Table(pot=0, singleplayerID=user, status=0)
+def generate_table(user):
+    table_instance = models.Table(status=0)
+    table_instance.save()
+    table_instance.players.add(user)
     table_instance.save()
     generate_deck(table_instance)
     return table_instance
