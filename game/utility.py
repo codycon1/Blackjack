@@ -15,12 +15,14 @@ STATUS_BET_PLACED = 1
 STATUS_TURN = 2
 STATUS_SPLIT = 3
 
-
 def sp_process_input_json(data, user, table):
     action_primary = None
     action_split = None
 
+    # TODO: this is a highly repeated code snippet
     player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
+    if not player_tracker:
+        player_tracker = models.PlayerTracker(playerID=user, tableID=table)
 
     try:
         action_primary = data['primary']['action']
@@ -43,7 +45,6 @@ def sp_process_input_json(data, user, table):
         player_tracker.status = STATUS_BET_PLACED
         player_tracker.save()
         user.save()
-
 
     if action_primary == 'hit':
         pass
@@ -107,22 +108,52 @@ def sp_sync(table, user, init=False):
 
 
 def sp_get_ready_signal(player_tracker):
-    primary_signal = []
     split_signal = None
-    if player_tracker.status == STATUS_INIT:
-        primary_signal.append('Bet')
-    elif player_tracker.status == STATUS_BET_PLACED:
-        primary_signal.append('Hit')
-        primary_signal.append('Stay')
+    primary_signal = None
+
+    if player_tracker.status is not None:
+        primary_signal = []
+        if player_tracker.status == STATUS_INIT:
+            primary_signal.append('Bet')
+        elif player_tracker.status == STATUS_BET_PLACED:
+            # Dealer's initial cards are drawn
+            cards = models.Card.objects.filter(dealt=False, tableID=player_tracker.tableID)
+
+            # TODO: this is brute force, make it elegant by looping twice
+            dealer_flipped_card = random.choice(cards)
+            dealer_flipped_card.hidden = True
+            dealer_flipped_card.dealt = True
+            dealer_flipped_card.dealer = True
+            dealer_flipped_card.save()
+            cards = cards.exclude(pk=dealer_flipped_card.pk)
+
+            dealer_card_1 = random.choice(cards)
+            dealer_card_1.dealt = True
+            dealer_card_1.dealer = True
+            dealer_card_1.save()
+            cards = cards.exclude(pk=dealer_card_1.pk)
+
+            player_tracker.status = STATUS_TURN
+            player_tracker.save()
+
+            # Player's initial cards are drawn
+            # TODO: this is brute force, make it elegant
+            player_init_card = random.choice(cards)
+            player_init_card.playerID = player_tracker.playerID
+            player_init_card.dealt = True
+            player_init_card.save()
+            cards = cards.exclude(pk=player_init_card.pk)
+
+            player_card_1 = random.choice(cards)
+            player_card_1.playerID = player_tracker.playerID
+            player_card_1.dealt = True
+            player_card_1.save()
+
+
+        elif player_tracker.status == STATUS_TURN:
+            pass
 
     if player_tracker.split_status is not None:
-        split_signal = []
-        if player_tracker.split_status == STATUS_INIT:
-            split_signal.append('Bet')
-        elif player_tracker.status == STATUS_BET_PLACED:
-            split_signal.append('Hit')
-            split_signal.append('Stay')
-    else:
         player_cards = models.Card.objects.filter(playerID=player_tracker.playerID, tableID=player_tracker.tableID)
         duplicate_ranks = player_cards.values('rank')
         # TODO: finish checking for duplicate and add split option if there are any
@@ -256,14 +287,21 @@ def sp_prep_table(user):
 
 
 def sp_reset_table(table, user):
+    player_tracker = models.PlayerTracker.objects.filter(playerID=user, tableID=table).first()
     table.delete()
     table.save()
     table = generate_table(user)
+    if player_tracker:
+        player_tracker.tableID = table
+        player_tracker.status = STATUS_INIT
+        player_tracker.split_status = None
+        player_tracker.save()
 
     bet_instance = models.Bet.objects.filter(playerID=user, tableID=table)
     if bet_instance:
         bet_instance.delete()
         bet_instance.save()
+
     return table
 
 
@@ -279,10 +317,14 @@ def generate_table(user):
 
 # Generate a deck for a table
 def generate_deck(table):
-    for i in range(4):
-        for j in range(1, 14):
-            models.Card.objects.create(suit=i, rank=j, img=(rankDict[j] + '_of_' + suitDict[i] + '.png'),
-                                       tableID=table, )
+    if deck := models.Card.objects.filter(tableID=table):
+        reset_deck(table)
+    else:
+
+        for i in range(4):
+            for j in range(1, 14):
+                models.Card.objects.create(suit=i, rank=j, img=(rankDict[j] + '_of_' + suitDict[i] + '.png'),
+                                           tableID=table, )
 
 
 def reset_deck(table):
@@ -290,5 +332,7 @@ def reset_deck(table):
     for card in deck:
         card.dealt = False
         card.dealer = False
-        card.userID = None
+        card.playerID = None
+        hidden = False
+        split = False
         card.save()

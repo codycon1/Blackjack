@@ -20,17 +20,25 @@ $(document).ready(function () {
         }
 
         function clear() {
+            $('#pot').empty();
+            $('#s_pot').empty();
+            $('#balance').empty();
             $('#dealercards').empty();
             $('#playercards').empty();
             $('#buttondiv').empty();
+            $('#splitcards').empty();
+            $('#splitbuttondiv').empty();
         }
 
         // BUTTON BINDINGS FOR DEBUG PURPOSES
         $('#reset').bind("click", function () {
             response["primary"]["action"] = "reset";
             sendresp(response);
-            location.reload();
         });
+        $('#nuke').bind("click", function () {
+            response["primary"]["action"] = "nuke";
+            sendresp(response);
+        })
         $('#reload').bind("click", function () {
             location.reload();
         });
@@ -86,6 +94,13 @@ $(document).ready(function () {
 
                 if ('bet' in data['primary']) {
                     $('#pot').text(data['primary']['bet']);
+                }
+            }
+            if('dealer_cards' in data){
+                for (let i=0; i<data['dealer_cards'].length; i++){
+                    $('#dealercards').append(
+                        '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.dealer_cards[i].url + '">'
+                    );
                 }
             }
         };

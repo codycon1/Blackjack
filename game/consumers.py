@@ -53,3 +53,46 @@ class SingleplayerConsumer(WebsocketConsumer):
 
         if resp is not None:
             self.send(text_data=resp)
+
+class HomeConsumer(WebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(args, kwargs)
+        self.user = 0
+        self.room_name = 0
+        self.room_group_name = 0
+
+    def connect(self):
+        self.user = self.scope["user"]
+        self.room_name = self.user.pk
+        self.room_group_name = self.user.pk
+        async_to_sync(self.channel_layer.group_add)(
+            str(self.room_group_name), str(self.channel_name)
+        )
+        self.accept()
+        print("Homepage util connected")
+
+    def disconnect(self, close_code):
+        async_to_sync(self.channel_layer.group_discard)(
+            str(self.room_group_name), self.channel_name
+        )
+        print("Homepage util disconnected", self.room_group_name)
+
+    def receive(self, text_data):
+        print("Receiving", text_data)
+        rec_data = json.loads(text_data)
+
+        if rec_data == 'nuke':
+            print("NUKING DB")
+            tables = models.Table.objects.all()
+            trackers = models.PlayerTracker.objects.all()
+            bets = models.Bet.objects.all()
+            cards = models.Card.objects.all()
+
+            tables.delete()
+            tables.save()
+            trackers.delete()
+            trackers.save()
+            bets.delete()
+            bets.save()
+            cards.delete()
+            cards.save()
