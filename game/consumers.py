@@ -79,9 +79,8 @@ class HomeConsumer(WebsocketConsumer):
 
     def receive(self, text_data):
         print("Receiving", text_data)
-        rec_data = json.loads(text_data)
 
-        if rec_data == 'nuke':
+        if text_data == 'nuke':
             print("NUKING DB")
             tables = models.Table.objects.all()
             trackers = models.PlayerTracker.objects.all()
@@ -89,10 +88,6 @@ class HomeConsumer(WebsocketConsumer):
             cards = models.Card.objects.all()
 
             tables.delete()
-            tables.save()
             trackers.delete()
-            trackers.save()
             bets.delete()
-            bets.save()
             cards.delete()
-            cards.save()

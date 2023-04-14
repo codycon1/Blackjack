@@ -13,7 +13,9 @@
         $(document).ready(function () {
             let socket = new WebSocket('ws://127.0.0.1:8000/home');
 
-
+            $('#nuke').bind('click', function () {
+                socket.send('nuke');
+            })
         });
     </script>
 {% endblock %}

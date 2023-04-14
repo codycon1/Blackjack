@@ -54,7 +54,7 @@ $(document).ready(function () {
         socket.onmessage = function (event) {
             clear();
             let data = JSON.parse(event.data);
-            console.log("In: " + JSON.stringify(data))
+            console.log(data);
             if (data["balance"]) {
                 $('#balance').text(data['balance']);
             }
@@ -85,10 +85,17 @@ $(document).ready(function () {
                                 `<button class="btn btn-primary btn-round m-2" id="${signal}">${signal}</button>`
                             );
                             $('#' + signal).bind('click', function () {
-                                response['action'] = signal;
+                                response['primary']['action'] = signal;
                                 sendresp(response);
                             });
                         }
+                    }
+                }
+                if ('cards' in data['primary']){
+                    for (let i = 0; i < data['primary']['cards'].length; i++){
+                        $('#playercards').append(
+                            '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded img-fluid" src="' + data['primary']['cards'][i]['url'] + '">'
+                        );
                     }
                 }
 
@@ -96,10 +103,54 @@ $(document).ready(function () {
                     $('#pot').text(data['primary']['bet']);
                 }
             }
+            if ('split' in data) {
+                if ('signal' in data['split']) {
+                    let split_signal = data['split']['signal'];
+                    let splitbtndiv = $('#splitbuttondiv');
+                    for (let i = 0; i < split_signal.length; i++) {
+                        if (split_signal[i] === "Bet") {
+                            splitbtndiv.append(
+                                `
+                                <form id="betform">
+                                <input type="number" min="1" max="${data['balance']}" class="form-control" name="betamt" id="betamt">
+                                <button class="btn btn-split btn-round m-2" id="bet">Bet</button>
+                                </form>
+                                `
+                            );
+                            $('#betform').submit(function (e) {
+                                response['split']['action'] = "bet " + ($('#betamt').val());
+                                e.preventDefault();
+                                console.log(response);
+                                sendresp(response);
+                            });
+                        } else {
+                            let signal = split_signal[i];
+                            btndiv.append(
+                                `<button class="btn btn-split btn-round m-2" id="${signal}">${signal}</button>`
+                            );
+                            $('#' + signal).bind('click', function () {
+                                response['split']['action'] = signal;
+                                sendresp(response);
+                            });
+                        }
+                    }
+                }
+                if ('cards' in data['split']) {
+                    for (let i = 0; i < data['split']['cards'].length; i++) {
+                        $('#splitcards').append(
+                            '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded img-fluid" src="' + data['split']['cards'][i]['url'] + '">'
+                        );
+                    }
+                }
+
+                if ('bet' in data['split']) {
+                    $('#pot').text(data['split']['bet']);
+                }
+            }
             if('dealer_cards' in data){
                 for (let i=0; i<data['dealer_cards'].length; i++){
                     $('#dealercards').append(
-                        '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.dealer_cards[i].url + '">'
+                        '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded img-fluid" src="' + data.dealer_cards[i].url + '">'
                     );
                 }
             }
@@ -114,7 +165,7 @@ $(document).ready(function () {
         //     if ('dealercards' in data) {
         //         for (let i = 0; i < data.dealercards.length; i++) {
         //             $('#dealercards').append(
-        //                 '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.dealercards[i].url + '">'
+        //                 '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded" src="' + data.dealercards[i].url + '">'
         //             );
         //         }
         //     }
@@ -122,7 +173,7 @@ $(document).ready(function () {
         //         if ('playercards' in data) {
         //             for (let i = 0; i < data.playercards.length; i++) {
         //                 $('#playercards').append(
-        //                     '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.playercards[i].url + '">'
+        //                     '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded" src="' + data.playercards[i].url + '">'
         //                 );
         //             }
         //         }
@@ -161,7 +212,7 @@ $(document).ready(function () {
         //         if ('playercards' in data) {
         //             for (let i = 0; i < data.playercards.length; i++) {
         //                 $('#splitcards').append(
-        //                     '<div class="col-md-3"><img class="mx-auto bg-light m-2 rounded" src="' + data.playercards[i].url + '">'
+        //                     '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded" src="' + data.playercards[i].url + '">'
         //                 );
         //             }
         //         }
