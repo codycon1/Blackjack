@@ -3,6 +3,7 @@ import random
 import json
 
 from game import models
+import users.models
 from collections import Counter
 
 STATIC_URL = 'http://127.0.0.1:8000/static/cards/'
@@ -15,6 +16,11 @@ STATUS_INIT = 0
 STATUS_BET_PLACED = 1
 STATUS_TURN = 2
 STATUS_SPLIT = 3
+STATUS_END = 4
+
+END_CONDITION_BUST = 10
+END_CONDITION_WIN = 11
+END_CONDITION_21 = 12
 
 
 def sp_process_input_json(data, user, table):
@@ -28,45 +34,67 @@ def sp_process_input_json(data, user, table):
 
     try:
         action_primary = data['primary']['action']
-        action_split = data['split']['action']
     except KeyError:
         # Screw it, just ignore a key error it's easier this way
         pass
-
-    if action_primary == 'reset':
-        print("Resetting table")
-        sp_reset_table(table, user)
-    if action_primary.split(' ')[0] == 'bet':
-        bet_amount = int(action_primary.split(' ')[1])
-        bet_instance = models.Bet.objects.filter(playerID=user, tableID=table).first()
-        if not bet_instance:
-            bet_instance = models.Bet(playerID=user, tableID=table)
-        bet_instance.amount += bet_amount
-        bet_instance.save()
-        user.balance -= bet_amount
-        player_tracker.status = STATUS_BET_PLACED
-        player_tracker.save()
-        user.save()
-
-    if action_primary == 'Hit':
-        sp_player_hit(table, user)
-
-    if action_primary == 'stay':
+    try:
+        action_split = data['split']['action']
+    except KeyError:
         pass
 
-    if action_primary == 'Split':
-        player_cards = models.Card.objects.filter(playerID=player_tracker.playerID, tableID=player_tracker.tableID)
-        player_card_vals = player_cards.values_list('rank')
-        counter = Counter(player_card_vals)
-        duplicates = [i for i, x in counter.items() if x > 1]
-        split_card = models.Card.objects.filter(playerID=player_tracker.playerID, rank=duplicates[0][0]).first()
-        split_card.split = True
-        split_card.save()
-        player_tracker.split_status = 1
-        player_tracker.save()
+    if action_primary is not None:
+        if action_primary == 'reset':
+            print("Resetting table")
+            sp_reset_table(table, user)
+        if action_primary.split(' ')[0] == 'bet':
+            bet_amount = int(action_primary.split(' ')[1])
+            bet_instance = models.Bet.objects.filter(playerID=user, tableID=table).first()
+            if not bet_instance:
+                bet_instance = models.Bet(playerID=user, tableID=table)
+            bet_instance.amount += bet_amount
+            bet_instance.save()
+            user.balance -= bet_amount
+            player_tracker.status = STATUS_BET_PLACED
+            player_tracker.save()
+            user.save()
 
-    if action_primary == 'double down':
-        pass
+        if action_primary == 'Hit':
+            sp_player_hit(table, user)
+
+        if action_primary == 'stay':
+            pass
+
+        if action_primary == 'Split':
+            player_cards = models.Card.objects.filter(playerID=player_tracker.playerID, tableID=player_tracker.tableID)
+            player_card_vals = player_cards.values_list('rank')
+            counter = Counter(player_card_vals)
+            duplicates = [i for i, x in counter.items() if x > 1]
+            split_card = models.Card.objects.filter(playerID=player_tracker.playerID, rank=duplicates[0][0]).first()
+            split_card.split = True
+            split_card.save()
+            player_tracker.split_status = STATUS_INIT
+            player_tracker.save()
+
+        if action_primary == 'double down':
+            pass
+
+    if action_split is not None:
+        if action_split.split(' ')[0] == 'bet':
+            print('split betting')
+            bet_amount = int(action_split.split(' ')[1])
+            bet_instance = models.Bet.objects.filter(playerID=user, tableID=table).first()
+            bet_instance.amount_split += bet_amount
+            bet_instance.save()
+            user.balance -= bet_amount
+            player_tracker.split_status = STATUS_BET_PLACED
+            player_tracker.save()
+            user.save()
+
+        if action_split == 'Hit':
+            sp_player_hit(table, user, split=True)
+
+        if action_split == 'Stay':
+            pass
 
     return sp_sync(table, user)
 
@@ -77,43 +105,49 @@ def sp_sync(table, user, init=False):
         player_tracker = models.PlayerTracker(playerID=user, tableID=table)
         player_tracker.save()
 
-    cards = models.Card.objects.filter(tableID=table, dealt=True)
+    cards = models.Card.objects.filter(tableID=table)
     bets = models.Bet.objects.filter(tableID=table)
 
     json_obj = {
         'balance': user.balance,
         'dealer_cards': [],
         'primary': {
-            'bet': [],
+            'bet': None,
             'cards': [],
             'signal': [],
+            'end_condition': None,
         },
         'split': {
-            'bet': [],
+            'bet': None,
             'cards': [],
             'signal': [],
+            'end_condition': None,
         },
     }
 
-    primary_action, split_action = sp_process_turn(player_tracker)
+    primary_action, split_action = sp_process_turn(player_tracker, cards)
 
     if bets:
         if user_bet := bets.filter(playerID=user).first():
             json_obj['primary']['bet'] = user_bet.amount
         if user_bet.amount_split:
             json_obj['split']['bet'] = user_bet.amount_split
-    if playercards := cards.filter(playerID=user):
+    if playercards := cards.filter(playerID=user, dealt=True):
         for i, card in enumerate(playercards):
-            if not card.split:
-                json_obj['primary']['cards'].append({"url": (STATIC_URL + card.img)})
-            else:
+            if card.split:
                 json_obj['split']['cards'].append({"url": (STATIC_URL + card.img)})
-    if dealercards := cards.filter(dealer=True):
+                # TODO: Check for endgame conditions here maybe
+            else:
+                json_obj['primary']['cards'].append({"url": (STATIC_URL + card.img)})
+                # TODO: And here
+    if dealercards := cards.filter(dealer=True, dealt=True):
         for i, card in enumerate(dealercards):
             if card.hidden:
                 json_obj['dealer_cards'].append({"url": (STATIC_URL + 'back.png')})
             else:
                 json_obj['dealer_cards'].append({"url": (STATIC_URL + card.img)})
+
+    # TODO: Check for endgame conditions here
 
     json_obj['primary']['signal'].extend(primary_action)
     if split_action is not None:
@@ -127,9 +161,13 @@ def sp_sync(table, user, init=False):
     return json_string
 
 
-def sp_process_turn(player_tracker):
+def sp_process_turn(player_tracker, cards):
     split_signal = None
     primary_signal = None
+
+    print("Status: " + str(player_tracker.status) + " Split status: " + str(player_tracker.split_status))
+
+    player_cards = cards.filter(playerID=player_tracker.playerID)
 
     if player_tracker.status is not None:
         primary_signal = []
@@ -137,7 +175,7 @@ def sp_process_turn(player_tracker):
             primary_signal.append('Bet')
         elif player_tracker.status == STATUS_BET_PLACED:
             # Dealer's initial cards are drawn
-            deck = models.Card.objects.filter(dealt=False, tableID=player_tracker.tableID)
+            deck = cards.filter(dealt=False)
             # TODO: this is brute force, make it elegant by looping twice
             dealer_flipped_card = random.choice(deck)
             dealer_flipped_card.hidden = True
@@ -172,17 +210,50 @@ def sp_process_turn(player_tracker):
             primary_signal.append('Stay')
 
         elif player_tracker.status == STATUS_TURN:
-            primary_signal.append('Hit')
-            primary_signal.append('Stay')
+            bust = sp_check_bust(player_cards.filter(split=False))
 
-            # Check for split condition
-            if player_tracker.split_status == 0:
-                player_cards = models.Card.objects.filter(playerID=player_tracker.playerID, tableID=player_tracker.tableID)
-                player_card_vals = player_cards.values_list('rank')
-                unique_player_card_vals = set(player_card_vals)
-                if len(player_card_vals) > len(unique_player_card_vals):
-                    primary_signal.append('Split')
+            if bust != END_CONDITION_BUST:
+                primary_signal.append('Hit')
+                primary_signal.append('Stay')
+            else:
+                player_tracker.status = END_CONDITION_BUST
+                # Game over processing here
 
+        # Check for split condition
+        if player_tracker.split_status is None:
+            player_cards = models.Card.objects.filter(playerID=player_tracker.playerID,
+                                                      tableID=player_tracker.tableID)
+            player_card_vals = player_cards.values_list('rank')
+            unique_player_card_vals = set(player_card_vals)
+            if len(player_card_vals) > len(unique_player_card_vals):
+                primary_signal.append('Split')
+
+    if player_tracker.split_status is not None:
+        split_signal = []
+        if player_tracker.split_status == STATUS_INIT:
+            split_signal.append('Bet')
+        elif player_tracker.split_status == STATUS_BET_PLACED:
+            deck = models.Card.objects.filter(dealt=False, tableID=player_tracker.tableID)
+            card1 = random.choice(deck)
+            card1.dealt = True
+            card1.playerID = player_tracker.playerID
+            card1.split = True
+            card1.save()
+            player_tracker.split_status = STATUS_TURN
+            player_tracker.save()
+        elif player_tracker.split_status == STATUS_TURN:
+            bust = sp_check_bust(player_cards.filter(split=True))
+
+            if not bust:
+                split_signal.append('Hit')
+                split_signal.append('Stay')
+            else:
+                player_tracker.status = END_CONDITION_BUST
+                # Game over processing here
+
+    # TODO: If the table status is gameover end and reprocess
+
+    print(primary_signal, split_signal)
     return primary_signal, split_signal
 
 
@@ -200,38 +271,92 @@ def sp_game_over(table, user, result, win21=False):
     user.save()
 
 
-def sp_check(table, user, dealer=False):  # Signals a game over condition
-    playercards = models.Card.objects.filter(tableID=table, dealt=True, userID=user)
-    dealercards = models.Card.objects.filter(tableID=table, dealt=True, dealer=True)
+def sp_payout(player_tracker):
+    bet_obj = models.Bet.objects.filter(player=player_tracker.playerID).first()
+    player_obj = users.models.BlackjackUser.objects.filter(pk=player_tracker.playerID).first()
+    if player_tracker.status == END_CONDITION_BUST:
+        player_obj.balance -= bet_obj.amount
+    elif player_tracker.status == END_CONDITION_WIN:
+        player_obj.balance += bet_obj.amount
+    elif player_tracker.status == END_CONDITION_21:
+        player_obj.balance += (bet_obj.amount * 1.5)
 
+    bet_obj.amount = 0
+    bet_obj.save()
+    player_obj.save()
+
+    if player_tracker.split_status:
+        if player_tracker.split_status == END_CONDITION_BUST:
+            player_obj.balance -= bet_obj.amount
+        elif player_tracker.split_status == END_CONDITION_WIN:
+            player_obj.balance += bet_obj.amount
+        elif player_tracker.split_status == END_CONDITION_21:
+            player_obj.balance += (bet_obj.amount * 1.5)
+
+        bet_obj.amount = 0
+        bet_obj.save()
+        player_obj.save()
+
+
+# Process the dealer's turn. Does not evaluate conditions.
+def sp_dealer_turn(table, cards):
+    dealercards = cards.filter(dealer=True)
+    dealertotal = 0
+    for card in dealercards:
+        if card.rank == 1 and (dealertotal + 11) < 21:
+            dealertotal += 11
+        else:
+            dealertotal += min(card.rank, 10)
+    while dealertotal <= 16:
+        dealer_card = sp_dealer_hit(table)
+        if dealer_card.rank == 1 and (dealertotal + 11) < 21:
+            dealertotal += 11
+        else:
+            dealertotal += min(dealer_card.rank, 10)
+
+
+# Checks when there's a stay condition
+# Returns result, does not process status or bets
+# Does not call dealer turn
+def sp_final_check(player_cards, dealer_cards):
     playertotal = 0
     dealertotal = 0
-    for card in playercards:
+
+    for card in player_cards:
+        if card.rank == 1 and (playertotal + 11) < 12:
+            playertotal += 11
+        else:
+            playertotal += min(card.rank, 10)
+
+    for card in dealer_cards:
+        if card.rank == 1 and (dealertotal + 11) < 12:
+            dealertotal += 11
+        else:
+            dealertotal += min(card.rank, 10)
+
+    if playertotal > 21:
+        return END_CONDITION_BUST
+    elif playertotal == 21:
+        return END_CONDITION_21
+    elif dealertotal > 21:
+        return END_CONDITION_WIN
+
+
+# Returns bust condition based on player's hand
+# Return true if bust
+def sp_check_bust(player_cards):  # Signals a game over condition. Checks predefined subset of cards
+    playertotal = 0
+
+    for card in player_cards:
         if card.rank == 1 and (playertotal + 11) < 21:
             playertotal += 11
         else:
             playertotal += min(card.rank, 10)
 
     if playertotal == 21:
-        return True
+        return END_CONDITION_21
     if playertotal > 21:
-        return False
-    if dealer:
-        for card in dealercards:
-            if card.rank == 1 and (dealertotal + 11) < 21:
-                dealertotal += 11
-            else:
-                dealertotal += min(card.rank, 10)
-        while dealertotal <= 16:
-            dealer_card = sp_dealer_hit(table)
-            if dealer_card.rank == 1 and (dealertotal + 11) < 21:
-                dealertotal += 11
-            else:
-                dealertotal += min(dealer_card.rank, 10)
-        if dealertotal > 21:
-            return True
-    if dealer:
-        return dealertotal > playertotal
+        return END_CONDITION_BUST
     else:
         return None
 
@@ -255,12 +380,13 @@ def sp_dealer_hit(table):
     return card_choice
 
 
-def sp_player_hit(table, user):
+def sp_player_hit(table, user, split=False):
     cards = models.Card.objects.filter(tableID=table, dealt=False)
     if not cards:
         return None
     card_choice = random.choice(cards)
     card_choice.dealt = True
+    card_choice.split = split
     card_choice.playerID = user
     card_choice.save()
 

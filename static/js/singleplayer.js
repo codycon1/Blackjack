@@ -67,7 +67,7 @@ $(document).ready(function () {
                             btndiv.append(
                                 `
                                 <form id="betform">
-                                <input type="number" min="1" max="${data['balance']}" class="form-control" name="betamt" id="betamt">
+                                <input type="number" min="1" max="${data['balance']}" class="form-control" name="betamt" id="betamt" required>
                                 <button class="btn btn-primary btn-round m-2" id="bet">Bet</button>
                                 </form>
                                 `
@@ -100,7 +100,7 @@ $(document).ready(function () {
                 }
 
                 if ('bet' in data['primary']) {
-                    $('#pot').text(data['primary']['bet']);
+                    $('#bet_amt').text(data['primary']['bet']);
                 }
             }
             if ('split' in data) {
@@ -112,8 +112,8 @@ $(document).ready(function () {
                             splitbtndiv.append(
                                 `
                                 <form id="betform">
-                                <input type="number" min="1" max="${data['balance']}" class="form-control" name="betamt" id="betamt">
-                                <button class="btn btn-split btn-round m-2" id="bet">Bet</button>
+                                <input type="number" min="1" max="${data['balance']}" class="form-control" name="betamt" id="betamt" required>
+                                <button class="btn btn-primary btn-split btn-round m-2" id="bet">Bet</button>
                                 </form>
                                 `
                             );
@@ -125,10 +125,11 @@ $(document).ready(function () {
                             });
                         } else {
                             let signal = split_signal[i];
-                            btndiv.append(
-                                `<button class="btn btn-split btn-round m-2" id="${signal}">${signal}</button>`
+                            let btn_id = "split_" + signal;
+                            splitbtndiv.append(
+                                `<button class="btn btn-primary btn-split btn-round m-2" id="${btn_id}">${signal}</button>`
                             );
-                            $('#' + signal).bind('click', function () {
+                            $('#' + btn_id).bind('click', function () {
                                 response['split']['action'] = signal;
                                 sendresp(response);
                             });
@@ -144,7 +145,7 @@ $(document).ready(function () {
                 }
 
                 if ('bet' in data['split']) {
-                    $('#pot').text(data['split']['bet']);
+                    $('#split_bet_amt').text(data['split']['bet']);
                 }
             }
             if('dealer_cards' in data){

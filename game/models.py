@@ -14,7 +14,7 @@ class PlayerTracker(models.Model):
     playerID = models.ForeignKey(user_model.BlackjackUser, on_delete=models.CASCADE, null=False)
     tableID = models.ForeignKey(Table, on_delete=models.CASCADE, null=False)
     status = models.IntegerField(default=0)
-    split_status = models.IntegerField(default=0, null=True)
+    split_status = models.IntegerField(default=None, null=True)
     json_cache = models.JSONField(null=True)
 
 
