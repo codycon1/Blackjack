@@ -12,6 +12,10 @@ suitDict = {0: 'diamonds', 1: 'hearts', 2: 'spades', 3: 'clubs'}
 rankDict = {1: 'ace', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9',
             10: '10', 11: 'jack', 12: 'queen', 13: 'king'}
 
+TABLE_STATUS_INIT = 0
+TABLE_STATUS_IN_PROGRESS = 1
+TABLE_STATUS_END = 2
+
 STATUS_INIT = 0
 STATUS_BET_PLACED = 1
 STATUS_TURN = 2
@@ -136,18 +140,14 @@ def sp_sync(table, user, init=False):
         for i, card in enumerate(playercards):
             if card.split:
                 json_obj['split']['cards'].append({"url": (STATIC_URL + card.img)})
-                # TODO: Check for endgame conditions here maybe
             else:
                 json_obj['primary']['cards'].append({"url": (STATIC_URL + card.img)})
-                # TODO: And here
     if dealercards := cards.filter(dealer=True, dealt=True):
         for i, card in enumerate(dealercards):
             if card.hidden:
                 json_obj['dealer_cards'].append({"url": (STATIC_URL + 'back.png')})
             else:
                 json_obj['dealer_cards'].append({"url": (STATIC_URL + card.img)})
-
-    # TODO: Check for endgame conditions here
 
     json_obj['primary']['signal'].extend(primary_action)
     if split_action is not None:
@@ -248,27 +248,18 @@ def sp_process_turn(player_tracker, cards):
                 split_signal.append('Hit')
                 split_signal.append('Stay')
             else:
-                player_tracker.status = END_CONDITION_BUST
+                player_tracker.split_status = END_CONDITION_BUST
                 # Game over processing here
 
-    # TODO: If the table status is gameover end and reprocess
+    if player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status is None:
+        pass
+        # TODO: Process end status without split here
+    elif player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status is not None:
+        pass
+        # Todo: Process end status with split here
 
     print(primary_signal, split_signal)
     return primary_signal, split_signal
-
-
-def sp_game_over(table, user, result, win21=False):
-    if result:  # Win condition
-        if win21:
-            user.balance += int(table.pot / 2)
-        user.balance += table.pot
-        table.status = 3
-        table.save()
-        user.save()
-    else:  # Lose condition
-        table.status = 4
-        table.save()
-    user.save()
 
 
 def sp_payout(player_tracker):
