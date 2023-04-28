@@ -231,6 +231,9 @@ def sp_process_turn(player_tracker, cards):
             player_init_card.playerID = player_tracker.playerID
             player_init_card.dealt = True
             player_init_card.save()
+
+            player_tracker.status = STATUS_TURN
+            player_tracker.save()
             # END
             #
             # # Dealer's initial cards are drawn
