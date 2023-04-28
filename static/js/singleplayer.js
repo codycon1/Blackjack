@@ -35,10 +35,6 @@ $(document).ready(function () {
             response["primary"]["action"] = "reset";
             sendresp(response);
         });
-        $('#nuke').bind("click", function () {
-            response["primary"]["action"] = "nuke";
-            sendresp(response);
-        })
         $('#reload').bind("click", function () {
             location.reload();
         });
@@ -78,8 +74,7 @@ $(document).ready(function () {
                                 console.log(response);
                                 sendresp(response);
                             });
-                        }
-                        else{
+                        } else {
                             let signal = primary_signal[i];
                             btndiv.append(
                                 `<button class="btn btn-primary btn-round m-2" id="${signal}">${signal}</button>`
@@ -91,16 +86,18 @@ $(document).ready(function () {
                         }
                     }
                 }
-                if ('cards' in data['primary']){
-                    for (let i = 0; i < data['primary']['cards'].length; i++){
+                if ('cards' in data['primary']) {
+                    for (let i = 0; i < data['primary']['cards'].length; i++) {
                         $('#playercards').append(
                             '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded img-fluid" src="' + data['primary']['cards'][i]['url'] + '">'
                         );
                     }
                 }
-
                 if ('bet' in data['primary']) {
                     $('#bet_amt').text(data['primary']['bet']);
+                }
+                if ('end_condition' in data['primary']) {
+                    $('#primary_end_condition').text(data['primary']['end_condition']);
                 }
             }
             if ('split' in data) {
@@ -143,13 +140,20 @@ $(document).ready(function () {
                         );
                     }
                 }
-
                 if ('bet' in data['split']) {
-                    $('#split_bet_amt').text(data['split']['bet']);
+                    if (data['split']['bet'] != null){
+                        $('#split_bet_amt').text("Split bet: " + data['split']['bet']);
+                    }
+                    else{
+                        $('#split_bet_amt').text("");
+                    }
+                }
+                if ('end_condition' in data['split']) {
+                    $('#split_end_condition').text(data['split']['end_condition']);
                 }
             }
-            if('dealer_cards' in data){
-                for (let i=0; i<data['dealer_cards'].length; i++){
+            if ('dealer_cards' in data) {
+                for (let i = 0; i < data['dealer_cards'].length; i++) {
                     $('#dealercards').append(
                         '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded img-fluid" src="' + data.dealer_cards[i].url + '">'
                     );

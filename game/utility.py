@@ -20,16 +20,20 @@ STATUS_INIT = 0
 STATUS_BET_PLACED = 1
 STATUS_TURN = 2
 STATUS_SPLIT = 3
-STATUS_END = 4
+
+STATUS_STAY = 8
 
 END_CONDITION_BUST = 10
 END_CONDITION_WIN = 11
 END_CONDITION_21 = 12
+END_CONDITION_DEALER_WIN = 13
 
 
-def sp_process_input_json(data, user, table):
+def sp_process_input_json(data, user):
     action_primary = None
     action_split = None
+
+    table = models.Table.objects.filter(players__in=[user]).first()
 
     # TODO: this is a highly repeated code snippet
     player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
@@ -49,13 +53,20 @@ def sp_process_input_json(data, user, table):
     if action_primary is not None:
         if action_primary == 'reset':
             print("Resetting table")
-            sp_reset_table(table, user)
+            table = sp_reset_table(table, user)
+        if action_primary == 'New':
+            print("New Game")
+            table = sp_reset_table(table, user)
+            player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
+            if not player_tracker:
+                player_tracker = models.PlayerTracker(playerID=user, tableID=table)
         if action_primary.split(' ')[0] == 'bet':
             bet_amount = int(action_primary.split(' ')[1])
             bet_instance = models.Bet.objects.filter(playerID=user, tableID=table).first()
             if not bet_instance:
                 bet_instance = models.Bet(playerID=user, tableID=table)
             bet_instance.amount += bet_amount
+            table.save()
             bet_instance.save()
             user.balance -= bet_amount
             player_tracker.status = STATUS_BET_PLACED
@@ -65,8 +76,9 @@ def sp_process_input_json(data, user, table):
         if action_primary == 'Hit':
             sp_player_hit(table, user)
 
-        if action_primary == 'stay':
-            pass
+        if action_primary == 'Stay':
+            player_tracker.status = STATUS_STAY
+            player_tracker.save()
 
         if action_primary == 'Split':
             player_cards = models.Card.objects.filter(playerID=player_tracker.playerID, tableID=player_tracker.tableID)
@@ -98,7 +110,7 @@ def sp_process_input_json(data, user, table):
             sp_player_hit(table, user, split=True)
 
         if action_split == 'Stay':
-            pass
+            player_tracker.split_status = STATUS_STAY
 
     return sp_sync(table, user)
 
@@ -149,9 +161,29 @@ def sp_sync(table, user, init=False):
             else:
                 json_obj['dealer_cards'].append({"url": (STATIC_URL + card.img)})
 
-    json_obj['primary']['signal'].extend(primary_action)
+    if primary_action is not None:
+        json_obj['primary']['signal'].extend(primary_action)
     if split_action is not None:
         json_obj['split']['signal'].extend(split_action)
+
+    if player_tracker.status == END_CONDITION_BUST:
+        json_obj['primary']['end_condition'] = 'Bust'
+    elif player_tracker.status == END_CONDITION_WIN:
+        json_obj['primary']['end_condition'] = 'Win'
+    elif player_tracker.status == END_CONDITION_21:
+        json_obj['primary']['end_condition'] = 'Win with 21'
+    elif player_tracker.status == END_CONDITION_DEALER_WIN:
+        json_obj['primary']['end_condition'] = 'You lose'
+
+    if player_tracker.split_status is not None:
+        if player_tracker.split_status == END_CONDITION_BUST:
+            json_obj['split']['end_condition'] = 'Bust'
+        elif player_tracker.split_status == END_CONDITION_WIN:
+            json_obj['split']['end_condition'] = 'Win'
+        elif player_tracker.split_status == END_CONDITION_21:
+            json_obj['split']['end_condition'] = 'Win with 21'
+        elif player_tracker.split_status == END_CONDITION_DEALER_WIN:
+            json_obj['split']['end_condition'] = 'You lose'
 
     player_tracker.json_cache = json_obj
     player_tracker.save()
@@ -174,37 +206,64 @@ def sp_process_turn(player_tracker, cards):
         if player_tracker.status == STATUS_INIT:
             primary_signal.append('Bet')
         elif player_tracker.status == STATUS_BET_PLACED:
-            # Dealer's initial cards are drawn
+
+            # TODO: BLOCK OUT UNIT TEST
+            # START
             deck = cards.filter(dealt=False)
-            # TODO: this is brute force, make it elegant by looping twice
             dealer_flipped_card = random.choice(deck)
             dealer_flipped_card.hidden = True
             dealer_flipped_card.dealt = True
             dealer_flipped_card.dealer = True
             dealer_flipped_card.save()
             deck = deck.exclude(pk=dealer_flipped_card.pk)
-
             dealer_card_1 = random.choice(deck)
             dealer_card_1.dealt = True
             dealer_card_1.dealer = True
             dealer_card_1.save()
             deck = deck.exclude(pk=dealer_card_1.pk)
 
-            player_tracker.status = STATUS_TURN
-            player_tracker.save()
-
-            # Player's initial cards are drawn
-            # TODO: this is brute force, make it elegant
-            player_init_card = random.choice(deck)
+            player_init_card = deck.filter(rank=2).first()
             player_init_card.playerID = player_tracker.playerID
             player_init_card.dealt = True
             player_init_card.save()
             deck = deck.exclude(pk=player_init_card.pk)
-
-            player_card_1 = random.choice(deck)
-            player_card_1.playerID = player_tracker.playerID
-            player_card_1.dealt = True
-            player_card_1.save()
+            player_init_card = deck.filter(rank=2).first()
+            player_init_card.playerID = player_tracker.playerID
+            player_init_card.dealt = True
+            player_init_card.save()
+            # END
+            #
+            # # Dealer's initial cards are drawn
+            # deck = cards.filter(dealt=False)
+            # # TODO: this is brute force, make it elegant by looping twice
+            # dealer_flipped_card = random.choice(deck)
+            # dealer_flipped_card.hidden = True
+            # dealer_flipped_card.dealt = True
+            # dealer_flipped_card.dealer = True
+            # dealer_flipped_card.save()
+            # deck = deck.exclude(pk=dealer_flipped_card.pk)
+            #
+            # dealer_card_1 = random.choice(deck)
+            # dealer_card_1.dealt = True
+            # dealer_card_1.dealer = True
+            # dealer_card_1.save()
+            # deck = deck.exclude(pk=dealer_card_1.pk)
+            #
+            # player_tracker.status = STATUS_TURN
+            # player_tracker.save()
+            #
+            # # Player's initial cards are drawn
+            # # TODO: this is brute force, make it elegant
+            # player_init_card = random.choice(deck)
+            # player_init_card.playerID = player_tracker.playerID
+            # player_init_card.dealt = True
+            # player_init_card.save()
+            # deck = deck.exclude(pk=player_init_card.pk)
+            #
+            # player_card_1 = random.choice(deck)
+            # player_card_1.playerID = player_tracker.playerID
+            # player_card_1.dealt = True
+            # player_card_1.save()
 
             primary_signal.append('Hit')
             primary_signal.append('Stay')
@@ -212,11 +271,12 @@ def sp_process_turn(player_tracker, cards):
         elif player_tracker.status == STATUS_TURN:
             bust = sp_check_bust(player_cards.filter(split=False))
 
-            if bust != END_CONDITION_BUST:
+            if not bust:
                 primary_signal.append('Hit')
                 primary_signal.append('Stay')
             else:
                 player_tracker.status = END_CONDITION_BUST
+                player_tracker.save()
                 # Game over processing here
 
         # Check for split condition
@@ -225,7 +285,7 @@ def sp_process_turn(player_tracker, cards):
                                                       tableID=player_tracker.tableID)
             player_card_vals = player_cards.values_list('rank')
             unique_player_card_vals = set(player_card_vals)
-            if len(player_card_vals) > len(unique_player_card_vals):
+            if len(player_card_vals) > len(unique_player_card_vals) and player_tracker.status < END_CONDITION_BUST:
                 primary_signal.append('Split')
 
     if player_tracker.split_status is not None:
@@ -249,14 +309,30 @@ def sp_process_turn(player_tracker, cards):
                 split_signal.append('Stay')
             else:
                 player_tracker.split_status = END_CONDITION_BUST
+                player_tracker.save()
                 # Game over processing here
 
+    if player_tracker.status == STATUS_STAY and player_tracker.split_status is None:
+        sp_dealer_turn(player_tracker.tableID, cards)
+        final_cards = models.Card.objects.filter(tableID=player_tracker.tableID)
+        dealer_cards = final_cards.filter(dealer=True)
+        player_cards = final_cards.filter(playerID=player_tracker.playerID)
+        player_tracker.status = sp_final_check(player_cards, dealer_cards)
+        player_tracker.save()
+    if player_tracker.split_status is not None:
+        if player_tracker.status >= STATUS_STAY and player_tracker.split_status >= STATUS_STAY:
+            sp_dealer_turn(player_tracker.tableID, cards)
+            final_cards = models.Card.objects.filter(tableID=player_tracker.tableID)
+            dealer_cards = final_cards.filter(dealer=True)
+            player_cards = final_cards.filter(playerID=player_tracker.playerID)
+            player_cards_split = player_cards.filter(split=True)
+            player_tracker.status = sp_final_check(player_cards_split, dealer_cards)
+            player_tracker.save()
+
     if player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status is None:
-        pass
-        # TODO: Process end status without split here
-    elif player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status is not None:
-        pass
-        # Todo: Process end status with split here
+        primary_signal.append('New')
+    elif player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status >= END_CONDITION_BUST:
+        primary_signal.append('New')
 
     print(primary_signal, split_signal)
     return primary_signal, split_signal
@@ -292,6 +368,11 @@ def sp_payout(player_tracker):
 # Process the dealer's turn. Does not evaluate conditions.
 def sp_dealer_turn(table, cards):
     dealercards = cards.filter(dealer=True)
+    for card in dealercards:
+        print("Card: "+str(card.rank)+"Flipped: "+str(card.hidden))
+    flipped_card = dealercards.filter(hidden=True).first()
+    flipped_card.hidden = False
+    flipped_card.save()
     dealertotal = 0
     for card in dealercards:
         if card.rank == 1 and (dealertotal + 11) < 21:
@@ -331,6 +412,7 @@ def sp_final_check(player_cards, dealer_cards):
         return END_CONDITION_21
     elif dealertotal > 21:
         return END_CONDITION_WIN
+    return END_CONDITION_DEALER_WIN
 
 
 # Returns bust condition based on player's hand
@@ -428,20 +510,15 @@ def sp_prep_table(user):
 
 
 def sp_reset_table(table, user):
-    player_tracker = models.PlayerTracker.objects.filter(playerID=user, tableID=table).first()
+    trackers = models.PlayerTracker.objects.filter(tableID=table)
+    trackers.delete()
+    bets = models.Bet.objects.filter(tableID=table)
+    bets.delete()
     table.delete()
-    table = generate_table(user)
-    if player_tracker:
-        player_tracker.tableID = table
-        player_tracker.status = STATUS_INIT
-        player_tracker.split_status = None
-        player_tracker.save()
+    deck = models.Card.objects.filter(tableID=table)
+    deck.delete()
 
-    bet_instance = models.Bet.objects.filter(playerID=user, tableID=table)
-    if bet_instance:
-        bet_instance.delete()
-
-    return table
+    return generate_table(user)
 
 
 # Generate a table and associated deck for either singleplayer or multiplayer
@@ -472,6 +549,6 @@ def reset_deck(table):
         card.dealt = False
         card.dealer = False
         card.playerID = None
-        hidden = False
-        split = False
+        card.hidden = False
+        card.split = False
         card.save()

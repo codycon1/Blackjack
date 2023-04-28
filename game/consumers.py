@@ -49,7 +49,7 @@ class SingleplayerConsumer(WebsocketConsumer):
         print("Receiving", text_data)
         rec_data = json.loads(text_data)
 
-        resp = sp_process_input_json(rec_data, self.user, self.table)
+        resp = sp_process_input_json(rec_data, self.user)
 
         if resp is not None:
             self.send(text_data=resp)
