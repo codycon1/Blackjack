@@ -152,6 +152,12 @@ def mp_sync(table, user, init=False):
         },
     }
 
+    players = player_tracker.tableID.players
+    if players is not None:
+        for player in players.all():
+            json_obj['players'].append(player.username)
+    print(players)
+
     if bets:
         if user_bet := bets.filter(playerID=user).first():
             json_obj['primary']['bet'] = user_bet.amount
@@ -198,7 +204,7 @@ def mp_sync(table, user, init=False):
     player_tracker.save()
 
     json_string = json.dumps(json_obj)
-    print(json_string)
+    print("mp_sync output: " + json_string)
     return json_string
 
 

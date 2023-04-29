@@ -75,7 +75,9 @@ class MultiplayerConsumer(WebsocketConsumer):
             tableInstance.players.add(self.user)
             self.table = tableInstance
         else:
-            self.table = models.Table.objects.create(players=[self.user]).save()
+            self.table = models.Table.objects.create()
+            self.table.players.add(self.user)
+            self.table.save()
         self.room_name = str(self.table.pk)
         self.room_group_name = str(self.table.pk)
         async_to_sync(self.channel_layer.group_add)(
