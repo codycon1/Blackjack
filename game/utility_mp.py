@@ -2,6 +2,8 @@ import math
 import random
 import json
 
+from django.db.models import Count
+
 from game import models
 import users.models
 from collections import Counter
@@ -29,12 +31,40 @@ END_CONDITION_WIN = 11
 END_CONDITION_21 = 12
 END_CONDITION_DEALER_WIN = 13
 
+MP_TABLE_INIT = 0
 
-def mp_process_input_json(data, user):
+
+# Syncs player names and ready actions to interact directly with the table
+def mp_group_sync(table):
+    table_sync_json = {
+        'players': list(table.players.all().values_list('username', flat=True)),
+        'mp_ready_action': None
+    }
+    player_number = table.players.all().count()
+    ready_count = table.mp_status
+    if ready_count < player_number:
+        if 1 < player_number <= 4:
+            table_sync_json['mp_ready_action'] = 'Ready'
+
+    print(json.dumps(table_sync_json))
+    return table_sync_json
+
+
+def mp_player_disconnect(table, user):
+    models.Bet.objects.filter(playerID=user, tableID=table).delete()
+    table.players.remove(user)
+    table.save()
+    if table.players.count() == 0:
+        table.delete()
+        return None
+    return mp_group_sync(table)
+
+
+def mp_process_input_json(data, user, table):
     action_primary = None
     action_split = None
 
-    table = models.Table.objects.filter(players__in=[user]).first()
+    player_number = table.players.all().count()
 
     # TODO: this is a highly repeated code snippet
     player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
@@ -52,6 +82,12 @@ def mp_process_input_json(data, user):
         pass
 
     if action_primary is not None:
+        if action_primary == 'Ready':
+            table.mp_status += 1
+            table.save()
+            if table.mp_status != player_number:
+                return None
+
         if action_primary == 'reset':
             print("Resetting table")
             table = mp_reset_table(table, user)
@@ -123,7 +159,12 @@ def mp_process_input_json(data, user):
 
 
 def mp_sync(table, user, init=False):
-    player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
+    player_number = table.players.all().count()
+    ready_count = table.mp_status
+    if ready_count < player_number:
+        return None
+
+    player_tracker = models.PlayerTracker.objects.filter(playerID=user, tableID=table).first()
     if not player_tracker:
         player_tracker = models.PlayerTracker(playerID=user, tableID=table)
         player_tracker.save()
@@ -151,12 +192,6 @@ def mp_sync(table, user, init=False):
             'end_condition': None,
         },
     }
-
-    players = player_tracker.tableID.players
-    if players is not None:
-        for player in players.all():
-            json_obj['players'].append(player.username)
-    print(players)
 
     if bets:
         if user_bet := bets.filter(playerID=user).first():
@@ -566,10 +601,12 @@ def mp_resync(table, user, dealer_flip=False):
 
 # Create a single player table if it doesn't exist, else return the existing table
 def mp_prep_table(user):
-    table = models.Table.objects.filter(players__in=[user]).first()
-    if table is None:
-        table = generate_table(user)
-    return table
+    if tableInstance := models.Table.objects.annotate(num_players=Count('players')).filter(num_players__lt=5,
+                                                                                           mp_status__isnull=False).first():
+        tableInstance.players.add(user)
+    if tableInstance is None:
+        tableInstance = mp_generate_table(user)
+    return tableInstance
 
 
 def mp_reset_table(table, user):
@@ -581,13 +618,14 @@ def mp_reset_table(table, user):
     deck = models.Card.objects.filter(tableID=table)
     deck.delete()
 
-    return generate_table(user)
+    return mp_generate_table(user)
 
 
 # Generate a table and associated deck for either singleplayer or multiplayer
-def generate_table(user):
+def mp_generate_table(user):
     table_instance = models.Table(status=0)
     table_instance.save()
+    table_instance.mp_status = 0
     table_instance.players.add(user)
     table_instance.save()
     generate_deck(table_instance)

@@ -7,6 +7,7 @@ from users import models as user_model
 class Table(models.Model):
     tableID = models.AutoField(primary_key=True)
     status = models.IntegerField(default=0)
+    mp_status = models.IntegerField(null=True, default=None)
     players = models.ManyToManyField(user_model.BlackjackUser)
 
 

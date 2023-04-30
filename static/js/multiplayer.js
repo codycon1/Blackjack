@@ -17,6 +17,7 @@ $(document).ready(function () {
             response = {
                 "primary": {},
                 "split": {},
+                "ready_action": null,
             };
         }
 
@@ -58,7 +59,7 @@ $(document).ready(function () {
             console.log("Raw data: " + event.data);
             clear();
             let data = JSON.parse(event.data);
-            data = JSON.parse(data); // The stupid thing is extra stringified so you have to call this twice
+            // data = JSON.parse(data); // The stupid thing is extra stringified so you have to call this twice
             console.log(data);
             if ('players' in data) {
                 for (let i = 0; i < data['players'].length; i++) {
@@ -174,6 +175,16 @@ $(document).ready(function () {
                         '<div class="col-md-2"><img class="mx-auto bg-light m-2 rounded img-fluid" src="' + data.dealer_cards[i].url + '">'
                     );
                 }
+            }
+            if ('mp_ready_action' in data) {
+                $('#buttondiv').append(
+                    `<button className="btn btn-primary btn-round m-2" id="mp_ready">${data['mp_ready_action']}</button>`
+                );
+                $('#mp_ready').bind('click', function () {
+                    response['ready_action'] = data['mp_ready_action'];
+                    sendresp(response);
+                    $(this).prop('disabled', true);
+                });
             }
         };
     }

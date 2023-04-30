@@ -559,7 +559,7 @@ def sp_resync(table, user, dealer_flip=False):
 
 # Create a single player table if it doesn't exist, else return the existing table
 def sp_prep_table(user):
-    table = models.Table.objects.filter(players__in=[user]).first()
+    table = models.Table.objects.filter(players__in=[user], mp_status=None).first()
     if table is None:
         table = generate_table(user)
     return table

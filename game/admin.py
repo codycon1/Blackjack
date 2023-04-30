@@ -6,7 +6,7 @@ from game.models import *
 # Register your models here.
 @admin.register(Table)
 class TableAdmin(admin.ModelAdmin):
-    list_display = ('tableID', 'status',)
+    list_display = ('tableID', 'status', 'mp_status')
 
 @admin.register(PlayerTracker)
 class PlayerTrackerAdmin(admin.ModelAdmin):

@@ -70,32 +70,31 @@ class MultiplayerConsumer(WebsocketConsumer):
     def connect(self):
         # self.user is a proper model instance
         self.user = self.scope["user"]
-        if tableInstance := models.Table.objects.annotate(num_players=Count('players')).filter(
-                num_players__lt=5).first():
-            tableInstance.players.add(self.user)
-            self.table = tableInstance
-        else:
-            self.table = models.Table.objects.create()
-            self.table.players.add(self.user)
-            self.table.save()
+        self.table = mp.mp_prep_table(self.user)
         self.room_name = str(self.table.pk)
         self.room_group_name = str(self.table.pk)
+        self.accept()
         async_to_sync(self.channel_layer.group_add)(
             str(self.room_group_name), str(self.channel_name)
         )
-        self.accept()
         print("Client connected", self.room_group_name)
-        self.table = mp.mp_prep_table(self.user)
 
-        syncjson = mp.mp_sync(self.table, self.user)
-        if syncjson is not None:
+        group_sync_json = mp.mp_group_sync(self.table)
+        if group_sync_json is not None:
             async_to_sync(self.channel_layer.group_send)(
-                self.room_group_name, {"type": "send_resp", "message": syncjson}
+                self.room_group_name, {"type": "send_resp", "message": group_sync_json}
             )
 
+        personal_sync_json = mp.mp_sync(self.table, self.user)
+        if personal_sync_json is not None:
+            self.send(text_data=personal_sync_json)
+
     def disconnect(self, close_code):
-        self.table.players.remove(self.user)
-        self.table.save()
+        group_sync_json = mp.mp_player_disconnect(self.table, self.user)
+        if group_sync_json is not None:
+            async_to_sync(self.channel_layer.group_send)(
+                self.room_group_name, {"type": "send_resp", "message": group_sync_json}
+            )
         async_to_sync(self.channel_layer.group_discard)(
             str(self.room_group_name), self.channel_name
         )
@@ -109,14 +108,19 @@ class MultiplayerConsumer(WebsocketConsumer):
         print("Receiving", text_data)
         rec_data = json.loads(text_data)
 
-        resp = mp.mp_process_input_json(rec_data, self.user)
+        if rec_data.get("ready_action"):
+            print("Got a ready")
 
-        async_to_sync(self.channel_layer.group_send)(
-            str(self.room_group_name), self.channel_name
-        )
+        else:
+            resp = mp.mp_process_input_json(rec_data, self.user, self.table)
 
-        if resp is not None:
-            self.send(text_data=resp)
+            group_sync_json = mp.mp_group_sync(self.table)
+            if group_sync_json is not None:
+                async_to_sync(self.channel_layer.group_send)(
+                    self.room_group_name, {"type": "send_resp", "message": group_sync_json}
+                )
+            if resp is not None:
+                self.send(text_data=resp)
 
 
 class HomeConsumer(WebsocketConsumer):
