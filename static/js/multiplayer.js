@@ -30,7 +30,11 @@ $(document).ready(function () {
             $('#buttondiv').empty();
             $('#splitcards').empty();
             $('#splitbuttondiv').empty();
+        }
+
+        function clear_server_sync() {
             $('#players').empty();
+            $('#mp_buttondiv').empty();
         }
 
         // BUTTON BINDINGS FOR DEBUG PURPOSES
@@ -55,19 +59,29 @@ $(document).ready(function () {
         }
 
         socket.onmessage = function (event) {
+            let mp_sync = false;
             console.log("Receiving a message");
             console.log("Raw data: " + event.data);
-            clear();
             let data = JSON.parse(event.data);
             // data = JSON.parse(data); // The stupid thing is extra stringified so you have to call this twice
             console.log(data);
             if ('players' in data) {
+                clear_server_sync()
+                mp_sync = true;
                 for (let i = 0; i < data['players'].length; i++) {
                     console.log(data['players'][i])
-                    $('#players').append('<div class="container"> ' + data['players'][i] + ' </div>');
+                    $('#players').append('<div class="container" id="p-'+ data['players'][i] +'">' + data['players'][i] + ' </div>');
                     // let player_status = data['players'][i].status;
-
                 }
+                if ('player_gameover' in data) {
+                    for (let i = 0; i < data['player_gameover'].length; i++){
+                        $('#p-' + data['player_gameover'][i]).addClass('gameover');
+                    }
+                }
+            }
+            if (!mp_sync) {
+                console.log("Clearing on a non table sync event");
+                clear();
             }
             if (data["balance"]) {
                 $('#balance').text(data['balance']);
@@ -177,14 +191,17 @@ $(document).ready(function () {
                 }
             }
             if ('mp_ready_action' in data) {
-                $('#buttondiv').append(
-                    `<button className="btn btn-primary btn-round m-2" id="mp_ready">${data['mp_ready_action']}</button>`
-                );
-                $('#mp_ready').bind('click', function () {
-                    response['ready_action'] = data['mp_ready_action'];
-                    sendresp(response);
-                    $(this).prop('disabled', true);
-                });
+                mp_sync = true;
+                if (data['mp_ready_action'] == "Ready") {
+                    $('#mp_buttondiv').append(
+                        `<button className="btn btn-primary btn-round m-2" id="mp_ready">${data['mp_ready_action']}</button>`
+                    );
+                    $('#mp_ready').bind('click', function () {
+                        response['ready_action'] = data['mp_ready_action'];
+                        sendresp(response);
+                        $(this).prop('disabled', true);
+                    });
+                }
             }
         };
     }

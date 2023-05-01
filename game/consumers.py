@@ -87,7 +87,7 @@ class MultiplayerConsumer(WebsocketConsumer):
 
         personal_sync_json = mp.mp_sync(self.table, self.user)
         if personal_sync_json is not None:
-            self.send(text_data=personal_sync_json)
+            self.send(text_data=json.dumps(personal_sync_json))
 
     def disconnect(self, close_code):
         group_sync_json = mp.mp_player_disconnect(self.table, self.user)
@@ -102,25 +102,42 @@ class MultiplayerConsumer(WebsocketConsumer):
 
     def send_resp(self, event):
         message = event["message"]
-        self.send(text_data=json.dumps(message))
+        player = event.get("player")
+        if player is None or player == self.user.pk:
+            self.send(text_data=json.dumps(message))
 
     def receive(self, text_data):
         print("Receiving", text_data)
         rec_data = json.loads(text_data)
 
+        self.table.refresh_from_db()
+
         if rec_data.get("ready_action"):
-            print("Got a ready")
+            self.table.mp_status += 1
+            self.table.save()
 
-        else:
+        table_status = self.table.mp_status
+        player_count = self.table.players.all().count()
+
+        if table_status >= player_count:
             resp = mp.mp_process_input_json(rec_data, self.user, self.table)
+            if table_status == player_count:
+                self.table.mp_status = table_status * 2
+                self.table.save()
 
+                for player in self.table.players.all().exclude(pk=self.user.pk):
+                    ind_init_resp = mp.mp_sync(self.table, self.user)
+                    if ind_init_resp is not None:
+                        async_to_sync(self.channel_layer.group_send)(
+                            self.room_group_name, {"type": "send_resp", "message": ind_init_resp, "player": player.pk}
+                        )
+            if resp is not None:
+                self.send(text_data=json.dumps(resp))
             group_sync_json = mp.mp_group_sync(self.table)
             if group_sync_json is not None:
                 async_to_sync(self.channel_layer.group_send)(
                     self.room_group_name, {"type": "send_resp", "message": group_sync_json}
                 )
-            if resp is not None:
-                self.send(text_data=resp)
 
 
 class HomeConsumer(WebsocketConsumer):

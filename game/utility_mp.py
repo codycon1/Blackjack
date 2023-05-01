@@ -38,6 +38,8 @@ MP_TABLE_INIT = 0
 def mp_group_sync(table):
     table_sync_json = {
         'players': list(table.players.all().values_list('username', flat=True)),
+        # TODO: make this empty and add to the players who are game over counting splits if exists
+        'player_gameover': list(table.players.all().values_list('username', flat=True)),
         'mp_ready_action': None
     }
     player_number = table.players.all().count()
@@ -82,12 +84,6 @@ def mp_process_input_json(data, user, table):
         pass
 
     if action_primary is not None:
-        if action_primary == 'Ready':
-            table.mp_status += 1
-            table.save()
-            if table.mp_status != player_number:
-                return None
-
         if action_primary == 'reset':
             print("Resetting table")
             table = mp_reset_table(table, user)
@@ -161,13 +157,12 @@ def mp_process_input_json(data, user, table):
 def mp_sync(table, user, init=False):
     player_number = table.players.all().count()
     ready_count = table.mp_status
-    if ready_count < player_number:
-        return None
-
     player_tracker = models.PlayerTracker.objects.filter(playerID=user, tableID=table).first()
     if not player_tracker:
         player_tracker = models.PlayerTracker(playerID=user, tableID=table)
         player_tracker.save()
+    if ready_count < player_number:
+        return None
 
     cards = models.Card.objects.filter(tableID=table)
     primary_action, split_action = mp_process_turn(player_tracker, cards)
@@ -177,7 +172,6 @@ def mp_sync(table, user, init=False):
 
     json_obj = {
         'balance': user.balance,
-        'players': [],
         'dealer_cards': [],
         'primary': {
             'bet': None,
@@ -240,7 +234,7 @@ def mp_sync(table, user, init=False):
 
     json_string = json.dumps(json_obj)
     print("mp_sync output: " + json_string)
-    return json_string
+    return json_obj
 
 
 def mp_process_turn(player_tracker, cards):
@@ -256,67 +250,38 @@ def mp_process_turn(player_tracker, cards):
         if player_tracker.status == STATUS_INIT:
             primary_signal.append('Bet')
         elif player_tracker.status == STATUS_BET_PLACED:
-
-            # TODO: BLOCK OUT UNIT TEST
-            # START
+            # Dealer's initial cards are drawn
             deck = cards.filter(dealt=False)
-            dealer_flipped_card = random.choice(deck)
-            dealer_flipped_card.hidden = True
-            dealer_flipped_card.dealt = True
-            dealer_flipped_card.dealer = True
-            dealer_flipped_card.save()
-            deck = deck.exclude(pk=dealer_flipped_card.pk)
-            dealer_card_1 = random.choice(deck)
-            dealer_card_1.dealt = True
-            dealer_card_1.dealer = True
-            dealer_card_1.save()
-            deck = deck.exclude(pk=dealer_card_1.pk)
+            if deck.filter(dealt=True, dealer=True).exists():
+                # TODO: this is brute force, make it elegant by looping twice
+                dealer_flipped_card = random.choice(deck)
+                dealer_flipped_card.hidden = True
+                dealer_flipped_card.dealt = True
+                dealer_flipped_card.dealer = True
+                dealer_flipped_card.save()
+                deck = deck.exclude(pk=dealer_flipped_card.pk)
 
-            player_init_card = deck.filter(rank=2).first()
+                dealer_card_1 = random.choice(deck)
+                dealer_card_1.dealt = True
+                dealer_card_1.dealer = True
+                dealer_card_1.save()
+                deck = deck.exclude(pk=dealer_card_1.pk)
+
+            player_tracker.status = STATUS_TURN
+            player_tracker.save()
+
+            # Player's initial cards are drawn
+            # TODO: this is brute force, make it elegant
+            player_init_card = random.choice(deck)
             player_init_card.playerID = player_tracker.playerID
             player_init_card.dealt = True
             player_init_card.save()
             deck = deck.exclude(pk=player_init_card.pk)
-            player_init_card = deck.filter(rank=2).first()
-            player_init_card.playerID = player_tracker.playerID
-            player_init_card.dealt = True
-            player_init_card.save()
 
-            player_tracker.status = STATUS_TURN
-            player_tracker.save()
-            # END
-            #
-            # # Dealer's initial cards are drawn
-            # deck = cards.filter(dealt=False)
-            # # TODO: this is brute force, make it elegant by looping twice
-            # dealer_flipped_card = random.choice(deck)
-            # dealer_flipped_card.hidden = True
-            # dealer_flipped_card.dealt = True
-            # dealer_flipped_card.dealer = True
-            # dealer_flipped_card.save()
-            # deck = deck.exclude(pk=dealer_flipped_card.pk)
-            #
-            # dealer_card_1 = random.choice(deck)
-            # dealer_card_1.dealt = True
-            # dealer_card_1.dealer = True
-            # dealer_card_1.save()
-            # deck = deck.exclude(pk=dealer_card_1.pk)
-            #
-            # player_tracker.status = STATUS_TURN
-            # player_tracker.save()
-            #
-            # # Player's initial cards are drawn
-            # # TODO: this is brute force, make it elegant
-            # player_init_card = random.choice(deck)
-            # player_init_card.playerID = player_tracker.playerID
-            # player_init_card.dealt = True
-            # player_init_card.save()
-            # deck = deck.exclude(pk=player_init_card.pk)
-            #
-            # player_card_1 = random.choice(deck)
-            # player_card_1.playerID = player_tracker.playerID
-            # player_card_1.dealt = True
-            # player_card_1.save()
+            player_card_1 = random.choice(deck)
+            player_card_1.playerID = player_tracker.playerID
+            player_card_1.dealt = True
+            player_card_1.save()
 
             primary_signal.append('Hit')
             primary_signal.append('Stay')
