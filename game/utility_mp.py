@@ -2,6 +2,8 @@ import math
 import random
 import json
 
+from django.db.models import Count, Q
+
 from game import models
 import users.models
 from collections import Counter
@@ -29,16 +31,53 @@ END_CONDITION_WIN = 11
 END_CONDITION_21 = 12
 END_CONDITION_DEALER_WIN = 13
 
+MP_TABLE_INIT = 0
 
-def sp_process_input_json(data, user):
+
+# Syncs player names and ready actions to interact directly with the table
+def mp_group_sync(table):
+    player_gameover = models.PlayerTracker.objects.filter(status__gte=STATUS_STAY, tableID=table)
+    player_gameover.filter(Q(split_status__isnull=True) | Q(split_status__gte=STATUS_STAY))
+    ready_player_ids = list(player_gameover.values_list('playerID', flat=True))
+    player_gameover = table.players.filter(id__in=ready_player_ids)
+    ready_player_list = list(player_gameover.values_list('username', flat=True))
+    # Filter table's users here by the users in player tracker query above
+    table_sync_json = {
+        'players': list(table.players.all().values_list('username', flat=True)),
+        # TODO: make this empty and add to the players who are game over counting splits if exists
+        'player_gameover': ready_player_list,
+        'mp_ready_action': None
+    }
+
+    player_number = table.players.all().count()
+    ready_count = table.mp_status
+    print("Ready count: " + str(ready_count))
+    if ready_count < player_number:
+        if 1 < player_number <= 4:
+            table_sync_json['mp_ready_action'] = 'Ready'
+
+    print(json.dumps(table_sync_json))
+    return table_sync_json
+
+
+def mp_player_disconnect(table, user):
+    models.Bet.objects.filter(playerID=user, tableID=table).delete()
+    table.players.remove(user)
+    table.save()
+    player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
+    player_tracker.delete()
+    if table.players.count() == 0:
+        table.delete()
+        return None
+    return mp_group_sync(table)
+
+
+def mp_process_input_json(data, user, table):
     action_primary = None
     action_split = None
 
-    table = models.Table.objects.filter(players__in=[user]).first()
-
+    player_number = table.players.all().count()
     player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
-    if not player_tracker:
-        player_tracker = models.PlayerTracker(playerID=user, tableID=table)
 
     try:
         action_primary = data['primary']['action']
@@ -53,13 +92,13 @@ def sp_process_input_json(data, user):
     if action_primary is not None:
         if action_primary == 'reset':
             print("Resetting table")
-            table = sp_reset_table(table, user)
+            table = mp_reset_table(table, user)
         if action_primary == 'New':
             print("New Game")
-            table = sp_reset_table(table, user)
-            player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
-            if not player_tracker:
-                player_tracker = models.PlayerTracker(playerID=user, tableID=table)
+            table = mp_reset_table(table)
+            player_tracker.status = 0
+            player_tracker.split_status = None
+            player_tracker.save()
         if action_primary.split(' ')[0] == 'bet':
             bet_amount = int(action_primary.split(' ')[1])
             bet_instance = models.Bet.objects.filter(playerID=user, tableID=table).first()
@@ -74,7 +113,7 @@ def sp_process_input_json(data, user):
             user.save()
 
         if action_primary == 'Hit':
-            sp_player_hit(table, user)
+            mp_player_hit(table, user)
 
         if action_primary == 'Stay':
             player_tracker.status = STATUS_STAY
@@ -112,26 +151,26 @@ def sp_process_input_json(data, user):
             player_tracker.save()
 
         if action_split == 'Hit':
-            sp_player_hit(table, user, split=True)
+            mp_player_hit(table, user, split=True)
 
         if action_split == 'Stay':
             player_tracker.split_status = STATUS_STAY
             player_tracker.save()
 
-    return sp_sync(table, user)
+    return mp_sync(table, user)
 
 
-def sp_sync(table, user, init=False):
-    player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
-    if not player_tracker:
-        player_tracker = models.PlayerTracker(playerID=user, tableID=table)
-        player_tracker.save()
+def mp_sync(table, user, init=False):
+    player_number = table.players.all().count()
+    ready_count = table.mp_status
+    player_tracker = models.PlayerTracker.objects.filter(playerID=user, tableID=table).first()
 
     cards = models.Card.objects.filter(tableID=table)
-    primary_action, split_action = sp_process_turn(player_tracker, cards)
+    primary_action, split_action = mp_process_turn(player_tracker, cards)
+
     cards = models.Card.objects.filter(tableID=table)  # Gotta query this a second time unfortunately
     bets = models.Bet.objects.filter(tableID=table)
-    user = users.models.BlackjackUser.objects.filter(pk=user.pk).first() # Refresh this too
+    user = users.models.BlackjackUser.objects.filter(pk=user.pk).first()  # Refresh this too
 
     json_obj = {
         'balance': user.balance,
@@ -196,11 +235,11 @@ def sp_sync(table, user, init=False):
     player_tracker.save()
 
     json_string = json.dumps(json_obj)
-    print(json_string)
-    return json_string
+    print("mp_sync output: " + json_string)
+    return json_obj
 
 
-def sp_process_turn(player_tracker, cards):
+def mp_process_turn(player_tracker, cards):
     split_signal = None
     primary_signal = None
 
@@ -210,27 +249,24 @@ def sp_process_turn(player_tracker, cards):
 
     if player_tracker.status is not None:
         primary_signal = []
+        deck = cards.filter(dealt=False)
         if player_tracker.status == STATUS_INIT:
+            if not cards.filter(dealt=True, dealer=True).exists():
+                dealer_flipped_card = random.choice(deck)
+                dealer_flipped_card.hidden = True
+                dealer_flipped_card.dealt = True
+                dealer_flipped_card.dealer = True
+                dealer_flipped_card.save()
+                deck = deck.exclude(pk=dealer_flipped_card.pk)
+
+                dealer_card_1 = random.choice(deck)
+                dealer_card_1.dealt = True
+                dealer_card_1.dealer = True
+                dealer_card_1.save()
             primary_signal.append('Bet')
         elif player_tracker.status == STATUS_BET_PLACED:
             # Dealer's initial cards are drawn
             deck = cards.filter(dealt=False)
-            dealer_flipped_card = random.choice(deck)
-            dealer_flipped_card.hidden = True
-            dealer_flipped_card.dealt = True
-            dealer_flipped_card.dealer = True
-            dealer_flipped_card.save()
-            deck = deck.exclude(pk=dealer_flipped_card.pk)
-
-            dealer_card_1 = random.choice(deck)
-            dealer_card_1.dealt = True
-            dealer_card_1.dealer = True
-            dealer_card_1.save()
-            deck = deck.exclude(pk=dealer_card_1.pk)
-
-            player_tracker.status = STATUS_TURN
-            player_tracker.save()
-
             # Player's initial cards are drawn
             player_init_card = random.choice(deck)
             player_init_card.playerID = player_tracker.playerID
@@ -250,8 +286,11 @@ def sp_process_turn(player_tracker, cards):
             if bet_amt <= player_tracker.playerID.balance:
                 primary_signal.append('Double')
 
+            player_tracker.status = STATUS_TURN
+            player_tracker.save()
+
         elif player_tracker.status == STATUS_TURN:
-            bust = sp_check_bust(player_cards.filter(split=False))
+            bust = mp_check_bust(player_cards.filter(split=False))
 
             if not bust:
                 primary_signal.append('Hit')
@@ -304,7 +343,7 @@ def sp_process_turn(player_tracker, cards):
             split_signal.append('Hit')
             split_signal.append('Stay')
         elif player_tracker.split_status == STATUS_TURN:
-            bust = sp_check_bust(player_cards.filter(split=True))
+            bust = mp_check_bust(player_cards.filter(split=True))
 
             if not bust:
                 split_signal.append('Hit')
@@ -320,37 +359,52 @@ def sp_process_turn(player_tracker, cards):
             bet_obj.amount_split = bet_obj.amount_split * 2
             bet_obj.save()
 
-    if player_tracker.status >= STATUS_STAY and player_tracker.split_status is None:
-        sp_dealer_turn(player_tracker.tableID, cards)
-        final_cards = models.Card.objects.filter(tableID=player_tracker.tableID)
-        dealer_cards = final_cards.filter(dealer=True)
-        player_cards = final_cards.filter(playerID=player_tracker.playerID)
-        player_tracker.status = sp_final_check(player_cards, dealer_cards)
-        player_tracker.save()
-    if player_tracker.split_status is not None:
-        if player_tracker.status >= STATUS_STAY and player_tracker.split_status >= STATUS_STAY:
-            sp_dealer_turn(player_tracker.tableID, cards)
+    all_trackers = models.PlayerTracker.objects.filter(tableID=player_tracker.tableID)
+    finished_trackers = all_trackers.filter(status__gte=STATUS_STAY)
+    split_trackers = all_trackers.filter(split_status__isnull=False)
+    if all_trackers.count() == finished_trackers.count():
+        if not finished_trackers.first():
+            finished_split_trackers = split_trackers.exclude(status__gte=STATUS_STAY)
+            if split_trackers.count() == finished_split_trackers.count():
+                mp_dealer_turn(player_tracker.tableID, cards)
+                final_cards = models.Card.objects.filter(tableID=player_tracker.tableID)
+                dealer_cards = final_cards.filter(dealer=True)
+                player_cards = final_cards.filter(playerID=player_tracker.playerID)
+                player_cards_split = player_cards.filter(split=True)
+                player_tracker.status = mp_final_check(player_cards, dealer_cards)
+                player_tracker.split_status = mp_final_check(player_cards_split, dealer_cards)
+                player_tracker.save()
+                # TODO : Send final sync. Append ready instead.
+                if player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status is None:
+                    primary_signal.append('New')
+                    mp_payout(player_tracker)
+                elif player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status >= END_CONDITION_BUST:
+                    primary_signal.append('New')
+                    mp_payout(player_tracker)
+                player_tracker.tableID.mp_status = STATUS_INIT
+                player_tracker.tableID.save()
+        else:
+            mp_dealer_turn(player_tracker.tableID, cards)
             final_cards = models.Card.objects.filter(tableID=player_tracker.tableID)
             dealer_cards = final_cards.filter(dealer=True)
             player_cards = final_cards.filter(playerID=player_tracker.playerID)
-            player_cards_split = player_cards.filter(split=True)
-
-            player_tracker.status = sp_final_check(player_cards, dealer_cards)
-            player_tracker.split_status = sp_final_check(player_cards_split, dealer_cards)
+            player_tracker.status = mp_final_check(player_cards, dealer_cards)
             player_tracker.save()
-
-    if player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status is None:
-        primary_signal.append('New')
-        sp_payout(player_tracker)
-    elif player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status >= END_CONDITION_BUST:
-        primary_signal.append('New')
-        sp_payout(player_tracker)
+            if player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status is None:
+                primary_signal.append('New')
+                mp_payout(player_tracker)
+            elif player_tracker.status >= END_CONDITION_BUST and player_tracker.split_status >= END_CONDITION_BUST:
+                primary_signal.append('New')
+                mp_payout(player_tracker)
+            player_tracker.tableID.mp_status = STATUS_INIT
+            player_tracker.tableID.save()
+            primary_signal = ['New']
 
     print(primary_signal, split_signal)
     return primary_signal, split_signal
 
 
-def sp_payout(player_tracker):
+def mp_payout(player_tracker):
     bet_obj = models.Bet.objects.filter(playerID=player_tracker.playerID).first()
     player_obj = users.models.BlackjackUser.objects.filter(pk=player_tracker.playerID.pk).first()
     if player_tracker.status == END_CONDITION_BUST:
@@ -388,7 +442,7 @@ def sp_payout(player_tracker):
 
 
 # Process the dealer's turn. Does not evaluate conditions.
-def sp_dealer_turn(table, cards):
+def mp_dealer_turn(table, cards):
     dealercards = cards.filter(dealer=True)
     for card in dealercards:
         print("Card: " + str(card.rank) + "Flipped: " + str(card.hidden))
@@ -403,7 +457,7 @@ def sp_dealer_turn(table, cards):
         else:
             dealertotal += min(card.rank, 10)
     while dealertotal <= 16:
-        dealer_card = sp_dealer_hit(table)
+        dealer_card = mp_dealer_hit(table)
         if dealer_card.rank == 1 and (dealertotal + 11) < 21:
             dealertotal += 11
         else:
@@ -413,7 +467,7 @@ def sp_dealer_turn(table, cards):
 # Checks when there's a stay condition
 # Returns result, does not process status or bets
 # Does not call dealer turn
-def sp_final_check(player_cards, dealer_cards):
+def mp_final_check(player_cards, dealer_cards):
     playertotal = 0
     dealertotal = 0
 
@@ -440,7 +494,7 @@ def sp_final_check(player_cards, dealer_cards):
 
 # Returns bust condition based on player's hand
 # Return true if bust
-def sp_check_bust(player_cards):  # Signals a game over condition. Checks predefined subset of cards
+def mp_check_bust(player_cards):  # Signals a game over condition. Checks predefined subset of cards
     playertotal = 0
 
     for card in player_cards:
@@ -457,7 +511,7 @@ def sp_check_bust(player_cards):  # Signals a game over condition. Checks predef
         return None
 
 
-def sp_place_bet(table, player, amt):
+def mp_place_bet(table, player, amt):
     table.pot += amt
     player.balance -= amt
     table.status = 1
@@ -465,7 +519,7 @@ def sp_place_bet(table, player, amt):
     player.save()
 
 
-def sp_dealer_hit(table):
+def mp_dealer_hit(table):
     cards = models.Card.objects.filter(tableID=table, dealt=False)
     if not cards:
         return None
@@ -476,7 +530,8 @@ def sp_dealer_hit(table):
     return card_choice
 
 
-def sp_player_hit(table, user, split=False):
+def mp_player_hit(table, user, split=False):
+    print("Hitting")
     cards = models.Card.objects.filter(tableID=table, dealt=False)
     if not cards:
         return None
@@ -487,67 +542,35 @@ def sp_player_hit(table, user, split=False):
     card_choice.save()
 
 
-def sp_resync(table, user, dealer_flip=False):
-    playercards = models.Card.objects.filter(tableID=table, dealt=True, userID=user)
-    dealercards = models.Card.objects.filter(tableID=table, dealt=True, dealer=True)
-    jsonobj = {
-        'balance': user.balance,
-        'pot': table.pot,
-    }
-    if playercards is not None:
-        jsonobj['playercards'] = []
-        for card in playercards:
-            jsonobj["playercards"].append({"url": (STATIC_URL + card.img)})
-
-    if dealercards is not None:
-        jsonobj['dealercards'] = []
-        for i, card in enumerate(dealercards):
-            if i == 0 and not dealer_flip:
-                jsonobj['dealercards'].append({"url": (STATIC_URL + 'back.png')})
-            else:
-                jsonobj["dealercards"].append({"url": (STATIC_URL + card.img)})
-
-    if table.status == 0:
-        jsonobj['readysignal'] = ['Bet']
-    elif table.status == 1:
-        jsonobj['readysignal'] = ['Start']
-    elif table.status == 2:
-        jsonobj['readysignal'] = ['Hit', 'Stay']
-    elif table.status == 3:
-        jsonobj['result'] = True
-        jsonobj['readysignal'] = ['Again']
-    elif table.status == 4:
-        jsonobj['result'] = False
-        jsonobj['readysignal'] = ['Again']
-    jsons = json.dumps(jsonobj)
-    print(jsons)
-    return jsons
-
-
 # Create a single player table if it doesn't exist, else return the existing table
-def sp_prep_table(user):
-    table = models.Table.objects.filter(players__in=[user], mp_status=None).first()
-    if table is None:
-        table = generate_table(user)
-    return table
+def mp_prep_table(user):
+    if tableInstance := models.Table.objects.annotate(num_players=Count('players')).filter(num_players__lt=5,
+                                                                                           mp_status__isnull=False).first():
+        tableInstance.players.add(user)
+    if tableInstance is None:
+        tableInstance = mp_generate_table(user)
+    return tableInstance
 
 
-def sp_reset_table(table, user):
+def mp_reset_table(table, user):
     trackers = models.PlayerTracker.objects.filter(tableID=table)
-    trackers.delete()
+    for tracker in trackers:
+        tracker.status = 0
+        tracker.split_status = None
+        tracker.save()
+
     bets = models.Bet.objects.filter(tableID=table)
     bets.delete()
-    table.delete()
-    deck = models.Card.objects.filter(tableID=table)
-    deck.delete()
+    reset_deck(table)
 
-    return generate_table(user)
+    return mp_generate_table(user)
 
 
 # Generate a table and associated deck for either singleplayer or multiplayer
-def generate_table(user):
+def mp_generate_table(user):
     table_instance = models.Table(status=0)
     table_instance.save()
+    table_instance.mp_status = 0
     table_instance.players.add(user)
     table_instance.save()
     generate_deck(table_instance)

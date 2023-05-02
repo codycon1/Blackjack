@@ -5,4 +5,17 @@
     <div class="container my-3">
         <img src="{% static 'gamblor.gif' %}" class="rounded mx-auto d-block ">
     </div>
+    <div class="container">
+        <button class="btn btn-danger btn-round my-2" id="nuke">NUKE THE DB</button>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+            let socket = new WebSocket('ws://127.0.0.1:8000/home');
+
+            $('#nuke').bind('click', function () {
+                socket.send('nuke');
+            })
+        });
+    </script>
 {% endblock %}

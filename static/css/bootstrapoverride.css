@@ -2,3 +2,8 @@
     border-color: #c7dbd2 !important;
     background-color: #c7dbd2 !important;
 }
+
+.gameover{
+    background-color: #198754!important;
+    border: 1px solid black !important;
+}

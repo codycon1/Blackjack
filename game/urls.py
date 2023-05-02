@@ -6,4 +6,5 @@ urlpatterns = [
     path('', views.home),
     path('play', views.play),
     path('singleplayer', views.singleplayer),
+    path('multiplayer', views.multiplayer),
 ]
