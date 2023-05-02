@@ -36,7 +36,6 @@ def sp_process_input_json(data, user):
 
     table = models.Table.objects.filter(players__in=[user]).first()
 
-    # TODO: this is a highly repeated code snippet
     player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
     if not player_tracker:
         player_tracker = models.PlayerTracker(playerID=user, tableID=table)
@@ -246,7 +245,6 @@ def sp_process_turn(player_tracker, cards):
             #
             # # Dealer's initial cards are drawn
             # deck = cards.filter(dealt=False)
-            # # TODO: this is brute force, make it elegant by looping twice
             # dealer_flipped_card = random.choice(deck)
             # dealer_flipped_card.hidden = True
             # dealer_flipped_card.dealt = True
@@ -264,7 +262,6 @@ def sp_process_turn(player_tracker, cards):
             # player_tracker.save()
             #
             # # Player's initial cards are drawn
-            # # TODO: this is brute force, make it elegant
             # player_init_card = random.choice(deck)
             # player_init_card.playerID = player_tracker.playerID
             # player_init_card.dealt = True

@@ -62,6 +62,7 @@ class MultiplayerConsumer(WebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(args, kwargs)
         self.user = None
+        self.player_tracker = None
         self.players = []
         self.room_name = None
         self.room_group_name = None
@@ -73,21 +74,18 @@ class MultiplayerConsumer(WebsocketConsumer):
         self.table = mp.mp_prep_table(self.user)
         self.room_name = str(self.table.pk)
         self.room_group_name = str(self.table.pk)
+        if not self.player_tracker:
+            self.player_tracker = models.PlayerTracker.objects.filter(playerID=self.user).first()
+            if self.player_tracker is None:
+                self.player_tracker = models.PlayerTracker(playerID=self.user, tableID=self.table)
+                self.player_tracker.save()
         self.accept()
         async_to_sync(self.channel_layer.group_add)(
             str(self.room_group_name), str(self.channel_name)
         )
-        print("Client connected", self.room_group_name)
+        print("Client connected", self.room_group_name, self.channel_name)
 
-        group_sync_json = mp.mp_group_sync(self.table)
-        if group_sync_json is not None:
-            async_to_sync(self.channel_layer.group_send)(
-                self.room_group_name, {"type": "send_resp", "message": group_sync_json}
-            )
-
-        personal_sync_json = mp.mp_sync(self.table, self.user)
-        if personal_sync_json is not None:
-            self.send(text_data=json.dumps(personal_sync_json))
+        self.send_group_sync()
 
     def disconnect(self, close_code):
         group_sync_json = mp.mp_player_disconnect(self.table, self.user)
@@ -106,11 +104,19 @@ class MultiplayerConsumer(WebsocketConsumer):
         if player is None or player == self.user.pk:
             self.send(text_data=json.dumps(message))
 
+    def send_group_sync(self):
+        group_sync_json = mp.mp_group_sync(self.table)
+        if group_sync_json is not None:
+            async_to_sync(self.channel_layer.group_send)(
+                self.room_group_name, {"type": "send_resp", "message": group_sync_json}
+            )
+
     def receive(self, text_data):
         print("Receiving", text_data)
         rec_data = json.loads(text_data)
 
         self.table.refresh_from_db()
+        self.player_tracker.refresh_from_db()
 
         if rec_data.get("ready_action"):
             self.table.mp_status += 1
@@ -126,13 +132,24 @@ class MultiplayerConsumer(WebsocketConsumer):
                 self.table.save()
 
                 for player in self.table.players.all().exclude(pk=self.user.pk):
-                    ind_init_resp = mp.mp_sync(self.table, self.user)
+                    print("Getting init personal sync")
+                    ind_init_resp = mp.mp_sync(self.table, player)
                     if ind_init_resp is not None:
                         async_to_sync(self.channel_layer.group_send)(
                             self.room_group_name, {"type": "send_resp", "message": ind_init_resp, "player": player.pk}
                         )
             if resp is not None:
+                if 'New' in resp['primary'].get("signal"):
+                    for player in self.table.players.all().exclude(pk=self.user.pk):
+                        print("Getting init personal sync")
+                        ind_init_resp = mp.mp_sync(self.table, player)
+                        if ind_init_resp is not None:
+                            async_to_sync(self.channel_layer.group_send)(
+                                self.room_group_name,
+                                {"type": "send_resp", "message": ind_init_resp, "player": player.pk}
+                            )
                 self.send(text_data=json.dumps(resp))
+
             group_sync_json = mp.mp_group_sync(self.table)
             if group_sync_json is not None:
                 async_to_sync(self.channel_layer.group_send)(
