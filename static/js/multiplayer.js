@@ -70,7 +70,7 @@ $(document).ready(function () {
                 mp_sync = true;
                 for (let i = 0; i < data['players'].length; i++) {
                     console.log(data['players'][i])
-                    $('#players').append('<div class="container" id="p-' + data['players'][i] + '">' + data['players'][i] + ' </div>');
+                    $('#players').append('<div class="container rounded border border-dark my-2" id="p-' + data['players'][i] + '">' + data['players'][i] + ' </div>');
                     // let player_status = data['players'][i].status;
                 }
                 if ('player_gameover' in data) {
@@ -196,7 +196,7 @@ $(document).ready(function () {
                 mp_sync = true;
                 if (data['mp_ready_action'] == "Ready") {
                     $('#mp_buttondiv').append(
-                        `<button className="btn btn-primary btn-round m-2" id="mp_ready">${data['mp_ready_action']}</button>`
+                        `<button class="btn btn-primary btn-round m-2" id="mp_ready">${data['mp_ready_action']}</button>`
                     );
                     $('#mp_ready').bind('click', function () {
                         response['ready_action'] = data['mp_ready_action'];
