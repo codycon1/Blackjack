@@ -2,7 +2,7 @@ import math
 import random
 import json
 
-from django.db.models import Count
+from django.db.models import Count, Q
 
 from game import models
 import users.models
@@ -36,14 +36,22 @@ MP_TABLE_INIT = 0
 
 # Syncs player names and ready actions to interact directly with the table
 def mp_group_sync(table):
+    player_gameover = models.PlayerTracker.objects.filter(status__gte=STATUS_STAY, tableID=table)
+    player_gameover.filter(Q(split_status__isnull=True) | Q(split_status__gte=STATUS_STAY))
+    ready_player_ids = list(player_gameover.values_list('playerID', flat=True))
+    player_gameover = table.players.filter(id__in=ready_player_ids)
+    ready_player_list = list(player_gameover.values_list('username', flat=True))
+    # Filter table's users here by the users in player tracker query above
     table_sync_json = {
         'players': list(table.players.all().values_list('username', flat=True)),
         # TODO: make this empty and add to the players who are game over counting splits if exists
-        'player_gameover': list(table.players.all().values_list('username', flat=True)),
+        'player_gameover': ready_player_list,
         'mp_ready_action': None
     }
+
     player_number = table.players.all().count()
     ready_count = table.mp_status
+    print("Ready count: " + str(ready_count))
     if ready_count < player_number:
         if 1 < player_number <= 4:
             table_sync_json['mp_ready_action'] = 'Ready'
@@ -56,6 +64,8 @@ def mp_player_disconnect(table, user):
     models.Bet.objects.filter(playerID=user, tableID=table).delete()
     table.players.remove(user)
     table.save()
+    player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
+    player_tracker.delete()
     if table.players.count() == 0:
         table.delete()
         return None
@@ -85,10 +95,10 @@ def mp_process_input_json(data, user, table):
             table = mp_reset_table(table, user)
         if action_primary == 'New':
             print("New Game")
-            table = mp_reset_table(table, user)
-            player_tracker = models.PlayerTracker.objects.filter(playerID=user).first()
-            if not player_tracker:
-                player_tracker = models.PlayerTracker(playerID=user, tableID=table)
+            table = mp_reset_table(table)
+            player_tracker.status = 0
+            player_tracker.split_status = None
+            player_tracker.save()
         if action_primary.split(' ')[0] == 'bet':
             bet_amount = int(action_primary.split(' ')[1])
             bet_instance = models.Bet.objects.filter(playerID=user, tableID=table).first()
@@ -157,6 +167,7 @@ def mp_sync(table, user, init=False):
 
     cards = models.Card.objects.filter(tableID=table)
     primary_action, split_action = mp_process_turn(player_tracker, cards)
+
     cards = models.Card.objects.filter(tableID=table)  # Gotta query this a second time unfortunately
     bets = models.Bet.objects.filter(tableID=table)
     user = users.models.BlackjackUser.objects.filter(pk=user.pk).first()  # Refresh this too
@@ -352,7 +363,7 @@ def mp_process_turn(player_tracker, cards):
     finished_trackers = all_trackers.filter(status__gte=STATUS_STAY)
     split_trackers = all_trackers.filter(split_status__isnull=False)
     if all_trackers.count() == finished_trackers.count():
-        if split_trackers is not None:
+        if not finished_trackers.first():
             finished_split_trackers = split_trackers.exclude(status__gte=STATUS_STAY)
             if split_trackers.count() == finished_split_trackers.count():
                 mp_dealer_turn(player_tracker.tableID, cards)
@@ -543,12 +554,14 @@ def mp_prep_table(user):
 
 def mp_reset_table(table, user):
     trackers = models.PlayerTracker.objects.filter(tableID=table)
-    trackers.delete()
+    for tracker in trackers:
+        tracker.status = 0
+        tracker.split_status = None
+        tracker.save()
+
     bets = models.Bet.objects.filter(tableID=table)
     bets.delete()
-    table.delete()
-    deck = models.Card.objects.filter(tableID=table)
-    deck.delete()
+    reset_deck(table)
 
     return mp_generate_table(user)
 

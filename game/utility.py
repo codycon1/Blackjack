@@ -213,9 +213,7 @@ def sp_process_turn(player_tracker, cards):
         if player_tracker.status == STATUS_INIT:
             primary_signal.append('Bet')
         elif player_tracker.status == STATUS_BET_PLACED:
-
-            # TODO: BLOCK OUT UNIT TEST
-            # START
+            # Dealer's initial cards are drawn
             deck = cards.filter(dealt=False)
             dealer_flipped_card = random.choice(deck)
             dealer_flipped_card.hidden = True
@@ -223,55 +221,27 @@ def sp_process_turn(player_tracker, cards):
             dealer_flipped_card.dealer = True
             dealer_flipped_card.save()
             deck = deck.exclude(pk=dealer_flipped_card.pk)
+
             dealer_card_1 = random.choice(deck)
             dealer_card_1.dealt = True
             dealer_card_1.dealer = True
             dealer_card_1.save()
             deck = deck.exclude(pk=dealer_card_1.pk)
 
-            player_init_card = deck.filter(rank=2).first()
+            player_tracker.status = STATUS_TURN
+            player_tracker.save()
+
+            # Player's initial cards are drawn
+            player_init_card = random.choice(deck)
             player_init_card.playerID = player_tracker.playerID
             player_init_card.dealt = True
             player_init_card.save()
             deck = deck.exclude(pk=player_init_card.pk)
-            player_init_card = deck.filter(rank=2).first()
-            player_init_card.playerID = player_tracker.playerID
-            player_init_card.dealt = True
-            player_init_card.save()
 
-            player_tracker.status = STATUS_TURN
-            player_tracker.save()
-            # END
-            #
-            # # Dealer's initial cards are drawn
-            # deck = cards.filter(dealt=False)
-            # dealer_flipped_card = random.choice(deck)
-            # dealer_flipped_card.hidden = True
-            # dealer_flipped_card.dealt = True
-            # dealer_flipped_card.dealer = True
-            # dealer_flipped_card.save()
-            # deck = deck.exclude(pk=dealer_flipped_card.pk)
-            #
-            # dealer_card_1 = random.choice(deck)
-            # dealer_card_1.dealt = True
-            # dealer_card_1.dealer = True
-            # dealer_card_1.save()
-            # deck = deck.exclude(pk=dealer_card_1.pk)
-            #
-            # player_tracker.status = STATUS_TURN
-            # player_tracker.save()
-            #
-            # # Player's initial cards are drawn
-            # player_init_card = random.choice(deck)
-            # player_init_card.playerID = player_tracker.playerID
-            # player_init_card.dealt = True
-            # player_init_card.save()
-            # deck = deck.exclude(pk=player_init_card.pk)
-            #
-            # player_card_1 = random.choice(deck)
-            # player_card_1.playerID = player_tracker.playerID
-            # player_card_1.dealt = True
-            # player_card_1.save()
+            player_card_1 = random.choice(deck)
+            player_card_1.playerID = player_tracker.playerID
+            player_card_1.dealt = True
+            player_card_1.save()
 
             primary_signal.append('Hit')
             primary_signal.append('Stay')

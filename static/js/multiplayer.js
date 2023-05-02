@@ -70,11 +70,11 @@ $(document).ready(function () {
                 mp_sync = true;
                 for (let i = 0; i < data['players'].length; i++) {
                     console.log(data['players'][i])
-                    $('#players').append('<div class="container" id="p-'+ data['players'][i] +'">' + data['players'][i] + ' </div>');
+                    $('#players').append('<div class="container" id="p-' + data['players'][i] + '">' + data['players'][i] + ' </div>');
                     // let player_status = data['players'][i].status;
                 }
                 if ('player_gameover' in data) {
-                    for (let i = 0; i < data['player_gameover'].length; i++){
+                    for (let i = 0; i < data['player_gameover'].length; i++) {
                         $('#p-' + data['player_gameover'][i]).addClass('gameover');
                     }
                 }
@@ -107,14 +107,16 @@ $(document).ready(function () {
                                 sendresp(response);
                             });
                         } else {
-                            let signal = primary_signal[i];
-                            btndiv.append(
-                                `<button class="btn btn-primary btn-round m-2" id="${signal}">${signal}</button>`
-                            );
-                            $('#' + signal).bind('click', function () {
-                                response['primary']['action'] = signal;
-                                sendresp(response);
-                            });
+                            if (primary_signal[i] != "New") {
+                                let signal = primary_signal[i];
+                                btndiv.append(
+                                    `<button class="btn btn-primary btn-round m-2" id="${signal}">${signal}</button>`
+                                );
+                                $('#' + signal).bind('click', function () {
+                                    response['primary']['action'] = signal;
+                                    sendresp(response);
+                                });
+                            }
                         }
                     }
                 }
